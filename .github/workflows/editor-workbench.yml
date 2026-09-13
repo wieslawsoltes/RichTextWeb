@@ -1,0 +1,27 @@
+name: Editor workbench
+on:
+  push:
+    branches: [feat/editor-layout-equations]
+    paths: [.github/workflows/editor-workbench.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --save-exact mathjax-full@3.2.2 mathlive@0.110.0
+      - name: Archive build dependencies without credentials or repository configuration
+        run: tar -czf /tmp/editor-workbench.tar.gz node_modules package.json package-lock.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: editor-workbench
+          path: /tmp/editor-workbench.tar.gz
+          retention-days: 1
