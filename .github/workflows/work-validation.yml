@@ -6,24 +6,18 @@ on:
 permissions:
   contents: read
 jobs:
-  dependencies:
+  recovery:
     if: github.ref == 'refs/heads/work/word-layout-equations'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Resolve equation renderer and declaration dependencies
-        run: |
-          npm install --save-exact katex
-          npm install --save-dev --save-exact @types/katex
-          npm ls --depth=0 > development-dependencies.txt
-          tar -czf development-dependencies.tar.gz node_modules package.json package-lock.json development-dependencies.txt
+          persist-credentials: false
+      - name: Archive tracked source only
+        run: git archive --format=tar.gz HEAD -o authoring-recovery.tar.gz
       - uses: actions/upload-artifact@v7
         with:
-          name: development-dependencies
-          path: development-dependencies.tar.gz
-          retention-days: 1
+          name: authoring-recovery
+          path: authoring-recovery.tar.gz
+          retention-days: 3
