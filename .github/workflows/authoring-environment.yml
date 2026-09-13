@@ -18,12 +18,16 @@ jobs:
           node-version: 22
           cache: npm
       - name: Resolve deterministic equation-renderer dependency
-        run: npm install --save-exact --ignore-scripts mathjax-full@3.2.2
+        run: |
+          npm install --save-exact --ignore-scripts mathjax-full@3.2.2
+          npm audit fix --ignore-scripts
       - name: Record production dependency audit
-        run: npm audit --omit=dev --json > dependency-audit.json || true
+        run: npm audit --omit=dev --json > dependency-audit.json
       - name: Archive reproducible dependencies (no credentials or repository configuration)
+        if: always()
         run: tar -czf equation-dependencies.tar.gz node_modules package.json package-lock.json dependency-audit.json
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: equation-dependencies
           path: equation-dependencies.tar.gz
