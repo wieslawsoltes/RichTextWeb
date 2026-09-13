@@ -17,17 +17,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Install isolated equation-rendering test dependency
-        run: npm install --no-save --package-lock=false --ignore-scripts katex@0.16.22
-      - name: Prepare Chromium for authoring checks
-        run: npx playwright install chromium --only-shell
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: playwright-browsers
-      - name: Archive reproducible test tools (no credentials or repository configuration)
-        run: tar -czf authoring-environment.tar.gz node_modules playwright-browsers
+      - name: Resolve deterministic equation-renderer dependency
+        run: npm install --save-exact --ignore-scripts mathjax-full@3.2.2
+      - name: Record production dependency audit
+        run: npm audit --omit=dev --json > dependency-audit.json || true
+      - name: Archive reproducible dependencies (no credentials or repository configuration)
+        run: tar -czf equation-dependencies.tar.gz node_modules package.json package-lock.json dependency-audit.json
       - uses: actions/upload-artifact@v7
         with:
-          name: authoring-environment
-          path: authoring-environment.tar.gz
+          name: equation-dependencies
+          path: equation-dependencies.tar.gz
           retention-days: 1
