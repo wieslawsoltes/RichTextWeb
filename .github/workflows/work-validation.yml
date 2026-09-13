@@ -1,0 +1,29 @@
+name: Isolated Word feature development
+on:
+  push:
+    branches: [work/word-layout-equations]
+    paths: [.github/workflows/work-validation.yml, .github/work/changes.patch]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    if: github.ref == 'refs/heads/work/word-layout-equations'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve equation renderer and declaration dependencies
+        run: |
+          npm install --save-exact katex
+          npm install --save-dev --save-exact @types/katex
+          npm ls --depth=0 > development-dependencies.txt
+          tar -czf development-dependencies.tar.gz node_modules package.json package-lock.json development-dependencies.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: development-dependencies
+          path: development-dependencies.tar.gz
+          retention-days: 1
