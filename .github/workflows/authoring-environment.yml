@@ -1,0 +1,33 @@
+name: Authoring verification environment
+on:
+  push:
+    branches: [feat/word-layout-equations]
+    paths: [.github/workflows/authoring-environment.yml]
+permissions:
+  contents: read
+jobs:
+  environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install isolated equation-rendering test dependency
+        run: npm install --no-save --package-lock=false --ignore-scripts katex@0.16.22
+      - name: Prepare Chromium for authoring checks
+        run: npx playwright install chromium --only-shell
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: playwright-browsers
+      - name: Archive reproducible test tools (no credentials or repository configuration)
+        run: tar -czf authoring-environment.tar.gz node_modules playwright-browsers
+      - uses: actions/upload-artifact@v7
+        with:
+          name: authoring-environment
+          path: authoring-environment.tar.gz
+          retention-days: 1
