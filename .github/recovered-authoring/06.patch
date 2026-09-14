@@ -1,0 +1,161 @@
++        return [parts[1], parts[0]].join(" ");
+       return parts.join(" ");
++    }
+   }
+   return undefined;
+ }
+@@ -302,6 +309,7 @@ function applyStyle(element: HTMLElement, props: Record<string, any>): void {
+   const height = cssLength(props.Height);
+   if (height) s.height = height;
+   if (props.BreakPageBefore) s.breakBefore = "page";
++  else if (props.BreakColumnBefore) s.breakBefore = "column";
+   if (props.KeepTogether) s.breakInside = "avoid";
+   if (props.KeepWithNext) s.breakAfter = "avoid";
+   if (props.Widows !== undefined)
+@@ -612,13 +620,35 @@ export function renderDocument(
+       position++;
+       result.leaves.push({ node: element, start, end: position, atomic: true });
+     } else if (
++      current.type === "Equation" ||
+       current.type === "Image" ||
+       current.type === "InlineUIContainer" ||
+       current.type === "Figure" ||
+       current.type === "Floater" ||
+       isAtomicBlock
+     ) {
+-      if (current.type === "Image") {
++      if (current.type === "Equation") {
++        element.className = "rt-equation";
++        element.dataset.display = String(Boolean(props.DisplayMode));
++        element.setAttribute("role", "math");
++        element.setAttribute(
++          "aria-label",
++          String(props.AlternativeText || props.EquationSource || "Equation"),
++        );
++        try {
++          const output = renderEquation(equationOptions(current));
++          element.innerHTML = output.SVG;
++          element.title = String(
++            props.AlternativeText || "Double-click to edit equation",
++          );
++          element.querySelector("svg")?.setAttribute("aria-hidden", "true");
++        } catch (error) {
++          element.textContent = "[Invalid equation]";
++          element.setAttribute("aria-invalid", "true");
++          element.title =
++            error instanceof Error ? error.message : String(error);
++        }
++      } else if (current.type === "Image") {
+         const image = element as HTMLImageElement;
+         const source = safeImageSource(props.Source);
+         if (source) image.src = source;
+diff --git a/src/control.ts b/src/control.ts
+index cd6106a..29c13fb 100644
+--- a/src/control.ts
++++ b/src/control.ts
+@@ -1,3 +1,4 @@
++import { EquationEditor } from "./equation-control.js";
+ import { FlowDocument, type DocumentNode, type TextPointer } from "./model.js";
+ import { RichTextEngine, type TextSelection } from "./engine.js";
+ import { fromHTML, toHTML, fromText } from "./formats.js";
+@@ -73,7 +74,7 @@ export interface CommandStateChangeDetail {
+ const stylesheet = `
+ :host{display:block;min-width:0;min-height:160px;--rt-accent:#2463d5;--rt-ink:#182236;--rt-paper:#fff;--rt-workspace:#edf0f5;--rt-border:#d7dce5;color:var(--rt-ink);font-family:Segoe UI,Inter,system-ui,sans-serif;color-scheme:light dark;contain:layout style}
+ *{box-sizing:border-box}.viewport{height:100%;min-height:inherit;overflow:auto;background:var(--rt-workspace);padding:28px;scrollbar-gutter:stable;position:relative;overscroll-behavior:contain}.surface{box-sizing:border-box;position:relative;outline:none;margin:0 auto;width:var(--rt-page-width,794px);min-height:var(--rt-page-height,1123px);padding:var(--rt-page-padding,72px);background:var(--rt-paper);color:var(--rt-ink);box-shadow:0 2px 14px #17233a13;border:1px solid var(--rt-border);font:16px/1.5 Georgia,Cambria,serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;caret-color:var(--rt-accent);zoom:var(--rt-zoom,1);tab-size:4}
+-.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
++.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface .rt-equation{display:inline-block;max-width:100%;vertical-align:baseline;white-space:normal;overflow:visible;line-height:normal}.surface .rt-equation[data-display=true]{display:block;text-align:center;margin:.6em 0;break-inside:avoid}.rt-equation mjx-container{display:inline-block;line-height:0;direction:ltr;text-indent:0}.rt-equation svg{overflow:visible;max-width:100%;height:auto}.rt-equation[aria-invalid=true]{border:1px solid #c42b1c;padding:.2em}.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
+ :host([theme=dark]){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}:host([theme=light]){color-scheme:light}:host([theme=dark]){color-scheme:dark}@media(prefers-color-scheme:dark){:host(:not([theme=light])){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}}@media(max-width:640px){.viewport{padding:12px}.surface{padding:32px;width:max(100%,var(--rt-page-width,794px))}.continuous .surface{width:100%;padding:18px}}@media print{:host{display:block;height:auto!important;contain:none;--rt-paper:white;--rt-ink:black}.viewport{height:auto!important;overflow:visible;padding:0;background:white}.surface,.continuous .surface{width:auto;min-height:0;margin:0;padding:0;border:0;box-shadow:none;zoom:1!important;outline:none!important}.surface td,.surface th{break-inside:avoid}.surface a{color:inherit}}`;
+ 
+ /** A model-backed, framework-independent rich text editing control. */
+@@ -95,6 +96,8 @@ export class RichTextBox extends HTMLElementBase {
+   protected _viewport: HTMLDivElement | null = null;
+   protected _render: RenderResult | null = null;
+   private _readOnly = false;
++  private _presentationReadOnly = false;
++  protected _renderDocument: DocumentNode | null = null;
+   private _acceptsTab = false;
+   private _zoom = 1;
+   private _viewMode: RichTextViewMode = "page";
+@@ -103,7 +106,7 @@ export class RichTextBox extends HTMLElementBase {
+   private _suspendRender = false;
+   private _restoringSelection = false;
+   private _backwardSelection = false;
+-  private _lastDOMHTML = "";
++  protected _lastDOMHTML = "";
+   private _subscriptions: Array<{ Dispose(): void }> = [];
+   private _connected = false;
+   private _disposed = false;
+@@ -202,7 +205,7 @@ export class RichTextBox extends HTMLElementBase {
+           '[data-rt-type="Figure"],[data-rt-type="Floater"]',
+         ) ||
+         target.closest<HTMLElement>(
+-          '[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
++          '[data-rt-type="Equation"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
+         );
+       this._selectedObjectId = object?.dataset.rtId || null;
+       this.emit("objectselectionchange", { elementId: this._selectedObjectId });
+@@ -376,6 +379,7 @@ export class RichTextBox extends HTMLElementBase {
+         [
+           "Figure",
+           "Floater",
++          "Equation",
+           "Image",
+           "InlineUIContainer",
+           "BlockUIContainer",
+@@ -448,7 +452,7 @@ export class RichTextBox extends HTMLElementBase {
+     this.Select(value.Offset, value.Offset);
+   }
+   get IsReadOnly(): boolean {
+-    return this._readOnly;
++    return this._readOnly || this._presentationReadOnly;
+   }
+   set IsReadOnly(value: boolean) {
+     this._readOnly = Boolean(value);
+@@ -456,6 +460,11 @@ export class RichTextBox extends HTMLElementBase {
+     this.updateAttributes();
+     this.emitCommandState();
+   }
++  protected setPresentationReadOnly(value: boolean): void {
++    this._presentationReadOnly = value;
++    this.updateAttributes();
++    this.emitCommandState();
++  }
+   get AcceptsTab(): boolean {
+     return this._acceptsTab;
+   }
+@@ -762,6 +771,7 @@ export class RichTextBox extends HTMLElementBase {
+         this.Document,
+         this._virtualWindow || undefined,
+       );
++      this._renderDocument = json;
+       this._render = reconcileDocumentDOM(
+         this._editor,
+         renderDocument(
+@@ -991,7 +1001,7 @@ export class RichTextBox extends HTMLElementBase {
+     return null;
+   }
+ 
+-  private offsetFromDOM(node: Node, offset: number): number {
++  protected offsetFromDOM(node: Node, offset: number): number {
+     if (!this._render || !this._editor) return 0;
+     const positions = this._render.positions;
+     const own = positions.get(node);
+@@ -1065,7 +1075,7 @@ export class RichTextBox extends HTMLElementBase {
+     return { node: this._editor, offset: 0 };
+   }
+ 
+-  private restoreSelection(): void {
++  protected restoreSelection(): void {
+     if (
+       !this._editor ||
+       this._composing ||
+@@ -1511,6 +1521,9 @@ export class RichTextBox extends HTMLElementBase {
+   private preserveNativeAtoms(
+     container: HTMLElement,
+   ): Map<string, DocumentNode> {
++    container
++      .querySelectorAll("[data-rt-pagination-spacer]")
++      .forEach((node) => node.remove());
+     const originals = new Map<string, DocumentNode>();
+     const walk = (node: DocumentNode): void => {
+       originals.set(node.id, node);
