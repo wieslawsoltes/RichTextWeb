@@ -1,0 +1,301 @@
+@@ -1804,6 +2148,26 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+       this._sheet.style.display = "contents";
+       this._pageWindow.style.display = "contents";
+       this._editor.classList.remove("rt-page-flow");
++      for (const property of [
++        "height",
++        "width",
++        "column-width",
++        "column-count",
++        "column-gap",
++        "column-fill",
++        "transform",
++      ])
++        this._editor.style.removeProperty(property);
++      this._editor
++        .querySelectorAll("[data-rt-pagination-spacer]")
++        .forEach((node) => node.remove());
++      this._sheet.style.zoom = "1";
++      this.moveLiveSheet(this._viewport!);
++      this._grid?.remove();
++      this._grid = null;
++      this._gridKey = "";
++      this._pageSlots.clear();
++      this._previews.clear();
+       this._viewport?.classList.add("continuous");
+       for (const element of [
+         this._header,
+@@ -1818,9 +2182,18 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+     this._pageWindow.style.display = "";
+     const nav = this.shadowRoot?.querySelector<HTMLElement>(".rt-page-nav");
+     if (nav) nav.style.display = "flex";
+-    const json = this.Document.ToJSON();
+-    applyEffectiveStyleValues(json, this.Document, undefined, false);
++    const unchanged =
++      this._configuredDocument === this.Document &&
++      this._configuredRevision === this.Document.Revision;
++    const json =
++      unchanged && this._paginationDocument
++        ? this._paginationDocument
++        : (this._renderDocument ?? this.Document.ToJSON());
++    if (!unchanged)
++      applyEffectiveStyleValues(json, this.Document, undefined, false);
+     this._paginationDocument = json;
++    this._configuredDocument = this.Document;
++    this._configuredRevision = this.Document.Revision;
+     this._settings = pageSettings(json.props || {});
+     const s = this._settings,
+       paper = this._sheet.style,
+@@ -1839,6 +2212,10 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+     flow.columnGap = `${s.ColumnGap}px`;
+     flow.columnCount = String(s.ColumnCount);
+     flow.columnFill = "auto";
++    if (unchanged && this._elementsById.size) {
++      this.updatePageView();
++      return;
++    }
+     const model = new Map<string, DocumentNode>();
+     const visit = (node: DocumentNode) => {
+       model.set(node.id, node);
+@@ -1851,7 +2228,11 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+       .forEach((element) => {
+         this._elementsById.set(element.dataset.rtId!, element);
+         const props = model.get(element.dataset.rtId!)?.props || {};
+-        if (props.BreakPageBefore || element.style.breakBefore === "page")
++        if (
++          props.BreakPageBefore ||
++          props.BreakColumnBefore ||
++          element.style.breakBefore === "page"
++        )
+           element.style.breakBefore = "column";
+         if (props.KeepTogether || element.style.breakInside === "avoid")
+           element.style.breakInside = "avoid-column";
+@@ -1878,8 +2259,328 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+       this._previousButton.disabled = !this.CanGoToPreviousPage;
+     if (this._nextButton) this._nextButton.disabled = !this.CanGoToNextPage;
+     this.renderStories();
++    this.updatePageArrangement();
+     this._objectAdorner?.Refresh();
+   }
++  private moveLiveSheet(parent: HTMLElement): void {
++    if (!this._sheet || this._sheet.parentElement === parent) return;
++    const focused = this.shadowRoot?.activeElement === this._editor;
++    if (
++      this._sheet.isConnected &&
++      parent.isConnected &&
++      typeof (parent as any).moveBefore === "function"
++    )
++      (parent as any).moveBefore(this._sheet, null);
++    else parent.append(this._sheet);
++    if (focused && this._editor) {
++      this._editor.focus({ preventScroll: true });
++      this.restoreSelection();
++    }
++  }
++  private arrangementColumns(): number {
++    if (this.PageArrangement === "TwoPages") return 2;
++    if (this.PageArrangement !== "MultiplePages" || !this._viewport) return 1;
++    return Math.max(
++      1,
++      Math.min(
++        4,
++        Math.floor(
++          (this._viewport.clientWidth - 32) /
++            (this._settings.PageWidth * this.Zoom + 24),
++        ),
++      ),
++    );
++  }
++  private updatePageArrangement(): void {
++    if (!this._viewport || !this._sheet || this.ViewMode !== "page") return;
++    if (this.PageArrangement === "SinglePage") {
++      this.moveLiveSheet(this._viewport);
++      this._grid?.remove();
++      this._grid = null;
++      this._gridKey = "";
++      this._pageSlots.clear();
++      this._previews.clear();
++      return;
++    }
++    const cols = this.arrangementColumns(),
++      start =
++        this.PageArrangement === "TwoPages"
++          ? Math.floor((this.PageNumber - 1) / 2) * 2 + 1
++          : 1;
++    const end =
++      this.PageArrangement === "TwoPages"
++        ? Math.min(this.PageCount, start + 1)
++        : this.PageCount;
++    const width = this._settings.PageWidth * this.Zoom,
++      height = this._settings.PageHeight * this.Zoom;
++    const key = `${this.PageArrangement}:${start}:${end}:${width}:${height}:${cols}`;
++    if (this._gridKey !== key) {
++      // Move the live selection-bearing DOM before removing obsolete preview containers.
++      this.moveLiveSheet(this._viewport);
++      this._grid?.remove();
++      this._grid = this.ownerDocument.createElement("div");
++      this._grid.className = "rt-page-grid";
++      this._grid.setAttribute("part", "pages");
++      this._grid.style.gridTemplateColumns = `repeat(${Math.min(cols, end - start + 1)},${width}px)`;
++      this._viewport.append(this._grid);
++      this._pageSlots.clear();
++      this._previews.clear();
++      const fragment = this.ownerDocument.createDocumentFragment();
++      for (let number = start; number <= end; number++) {
++        const slot = this.ownerDocument.createElement("div");
++        slot.className = "rt-page-slot";
++        slot.dataset.page = String(number);
++        slot.style.width = `${width}px`;
++        slot.style.height = `${height}px`;
++        const label = this.ownerDocument.createElement("div");
++        label.className = "rt-page-slot-label";
++        label.textContent = `Page ${number}`;
++        slot.append(label);
++        this._pageSlots.set(number, slot);
++        fragment.append(slot);
++      }
++      this._grid.append(fragment);
++      this._gridKey = key;
++    }
++    const slot = this._pageSlots.get(this.PageNumber);
++    if (slot) {
++      slot.querySelector(".rt-page-preview")?.remove();
++      this._previews.delete(this.PageNumber);
++      this.moveLiveSheet(slot);
++    }
++    this.queuePagePreviews();
++  }
++  private queuePagePreviews(): void {
++    if (
++      this._previewFrame ||
++      !this._grid ||
++      !this.isConnected ||
++      this.ViewMode !== "page" ||
++      this._pageDisposed
++    )
++      return;
++    this._previewFrame = this.ownerDocument.defaultView!.requestAnimationFrame(
++      () => {
++        this._previewFrame = 0;
++        if (
++          !this.isConnected ||
++          !this._grid ||
++          !this._layout ||
++          this._measuredEpoch !== this._layoutEpoch
++        )
++          return;
++        this.renderVisiblePagePreviews();
++      },
++    );
++  }
++  private renderVisiblePagePreviews(): void {
++    if (!this._viewport || !this._grid) return;
++    const wanted: number[] = [];
++    if (this.PageArrangement === "TwoPages")
++      wanted.push(...this._pageSlots.keys());
++    else {
++      const columns = this.arrangementColumns(),
++        stride = this._settings.PageHeight * this.Zoom + 24;
++      const top = Math.max(0, this._viewport.scrollTop - this._grid.offsetTop);
++      const first = Math.max(0, Math.floor(top / stride) - 1) * columns + 1;
++      const last = Math.min(
++        this.PageCount,
++        (Math.ceil((top + this._viewport.clientHeight) / stride) + 1) * columns,
++      );
++      for (let page = first; page <= last && wanted.length < 8; page++)
++        wanted.push(page);
++    }
++    for (const [page, preview] of this._previews)
++      if (!wanted.includes(page) || page === this.PageNumber) {
++        preview.remove();
++        this._previews.delete(page);
++      }
++    for (const page of wanted) {
++      if (page === this.PageNumber || this._previews.has(page)) continue;
++      const slot = this._pageSlots.get(page);
++      if (!slot) continue;
++      const preview = this.snapshotPage(page);
++      preview.classList.add("rt-page-preview");
++      preview.setAttribute("role", "button");
++      preview.tabIndex = 0;
++      preview.setAttribute(
++        "aria-label",
++        `Activate page ${page} of ${this.PageCount}`,
++      );
++      for (const child of Array.from(preview.children))
++        child.setAttribute("aria-hidden", "true");
++      preview.addEventListener("pointerdown", (event) => {
++        event.preventDefault();
++        const anchor = this.Selection.Start.Offset;
++        this.GoToPage(page);
++        const nativeDocument = this.ownerDocument as any;
++        const point = nativeDocument.caretPositionFromPoint?.(
++          event.clientX,
++          event.clientY,
++          { shadowRoots: [this.shadowRoot] },
++        );
++        const range =
++          !point &&
++          nativeDocument.caretRangeFromPoint?.(event.clientX, event.clientY);
++        const node = point?.offsetNode ?? range?.startContainer,
++          offset = point?.offset ?? range?.startOffset;
++        if (node && this._editor?.contains(node)) {
++          const at = this.offsetFromDOM(node, offset);
++          this.Select(event.shiftKey ? anchor : at, at);
++        }
++        this.Focus();
++      });
++      preview.addEventListener("keydown", (event) => {
++        if (event.key === "Enter" || event.key === " ") {
++          event.preventDefault();
++          this.GoToPage(page);
++          this.Focus();
++        }
++      });
++      slot.prepend(preview);
++      this._previews.set(page, preview);
++    }
++  }
++  private snapshotPage(number: number): HTMLDivElement {
++    if (!this._sheet || !this._editor)
++      throw new Error("The page surface is unavailable.");
++    const current = this._pageNumber;
++    // Stories depend on PAGE/NUMPAGES and first/even variants, unlike the body flow.
++    this._pageNumber = number;
++    this.renderStories();
++    const clone = this._sheet.cloneNode(true) as HTMLDivElement;
++    this._pageNumber = current;
++    this.renderStories();
++    const flow = clone.querySelector<HTMLElement>(".rt-page-flow");
++    const rtl =
++      this.ownerDocument.defaultView!.getComputedStyle(this._editor)
++        .direction === "rtl";
++    if (flow)
++      flow.style.transform = `translateX(${(rtl ? 1 : -1) * (number - 1) * (this._settings.ContentWidth + this._settings.ColumnGap)}px)`;
++    clone.setAttribute("aria-label", `Page ${number} of ${this.PageCount}`);
++    clone
++      .querySelectorAll<HTMLElement>("[part],[contenteditable],[tabindex],[id]")
++      .forEach((element) => {
++        element.removeAttribute("part");
++        element.removeAttribute("tabindex");
++        element.removeAttribute("id");
++        if (element.hasAttribute("contenteditable"))
++          element.contentEditable = "false";
++      });
++    clone
++      .querySelectorAll("[data-rt-id]")
++      .forEach((element) => element.removeAttribute("data-rt-id"));
++    clone
++      .querySelectorAll(".rt-object-adorner")
++      .forEach((element) => element.remove());
++    clone.removeAttribute("part");
++    return clone;
++  }
++  /** Return actual measured page sheets, including stories, columns and vector equations. */
++  async GetPrintHTML(
++    options: { StartPage?: number; EndPage?: number; Title?: string } = {},
++  ): Promise<string> {
++    if (this.ViewMode !== "page") {
++      const viewer = this.ownerDocument.createElement(
++        "flow-document-page-viewer",
++      );
