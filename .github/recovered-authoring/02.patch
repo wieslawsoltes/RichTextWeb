@@ -1,0 +1,209 @@
++DOCX exports native Office Math (`m:oMath`) structures rather than pictures, and imports common Office Math structures to editable MathML. A hash-bound RichTextWeb extension preserves exact original source for the library's own round-trip. Cross-application conversion can change advanced spacing, styling and unsupported structures. PDF export paints equation SVG paths as vectors; these paths are not searchable or fully accessibility-tagged math. Glyphs outside the renderer's outline coverage can require a different export route; unsupported path/text cases fail rather than silently dropping content.
++
++## References
++
++- MathJax SVG options: https://docs.mathjax.org/en/v3.2/options/output/svg.html
++- MathJax TeX input options: https://docs.mathjax.org/en/v3.2/options/input/tex.html
++- Open XML Office Math: https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.math.officemath
++- CSS fragmentation in multi-column layouts: https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Multicol_layout/Handling_content_breaks
+diff --git a/package-lock.json b/package-lock.json
+index 059120f..d26f9e6 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -31,7 +31,8 @@
+         "react": "19.3.0",
+         "react-dom": "19.3.0",
+         "rxjs": "7.8.2",
+-        "typescript": "7.0.2"
++        "typescript": "7.0.2",
++        "mathjax-full": "3.2.2"
+       },
+       "engines": {
+         "node": ">=22.13.0"
+@@ -1216,6 +1217,26 @@
+         "node": ">=22.12"
+       }
+     },
++    "node_modules/@xmldom/xmldom": {
++      "version": "0.9.12",
++      "resolved": "https://registry.npmjs.org/@xmldom/xmldom/-/xmldom-0.9.12.tgz",
++      "integrity": "sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=14.6"
++      },
++      "dev": true
++    },
++    "node_modules/commander": {
++      "version": "13.1.0",
++      "resolved": "https://registry.npmjs.org/commander/-/commander-13.1.0.tgz",
++      "integrity": "sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "dev": true
++    },
+     "node_modules/core-util-is": {
+       "version": "1.0.3",
+       "resolved": "https://registry.npmjs.org/core-util-is/-/core-util-is-1.0.3.tgz",
+@@ -1271,6 +1292,16 @@
+         "@esbuild/win32-x64": "0.28.2"
+       }
+     },
++    "node_modules/esm": {
++      "version": "3.2.25",
++      "resolved": "https://registry.npmjs.org/esm/-/esm-3.2.25.tgz",
++      "integrity": "sha512-U1suiZ2oDVWv4zPO56S0NcR5QriEahGtdN2OR6FiOG4WJvcjBVFB0qI4+eKoWFH483PKGuLuu6V8Z4T5g63UVA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      },
++      "dev": true
++    },
+     "node_modules/immediate": {
+       "version": "3.0.6",
+       "resolved": "https://registry.npmjs.org/immediate/-/immediate-3.0.6.tgz",
+@@ -1322,6 +1353,34 @@
+         "node": ">= 20"
+       }
+     },
++    "node_modules/mathjax-full": {
++      "version": "3.2.2",
++      "resolved": "https://registry.npmjs.org/mathjax-full/-/mathjax-full-3.2.2.tgz",
++      "integrity": "sha512-+LfG9Fik+OuI8SLwsiR02IVdjcnRCy5MufYLi0C3TdMT56L/pjB0alMVGgoWJF8pN9Rc7FESycZB9BMNWIid5w==",
++      "deprecated": "Version 4 replaces this package with the scoped package @mathjax/src",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "esm": "^3.2.25",
++        "mhchemparser": "^4.1.0",
++        "mj-context-menu": "^0.6.1",
++        "speech-rule-engine": "^4.0.6"
++      },
++      "dev": true
++    },
++    "node_modules/mhchemparser": {
++      "version": "4.2.1",
++      "resolved": "https://registry.npmjs.org/mhchemparser/-/mhchemparser-4.2.1.tgz",
++      "integrity": "sha512-kYmyrCirqJf3zZ9t/0wGgRZ4/ZJw//VwaRVGA75C4nhE60vtnIzhl9J9ndkX/h6hxSN7pjg/cE0VxbnNM+bnDQ==",
++      "license": "Apache-2.0",
++      "dev": true
++    },
++    "node_modules/mj-context-menu": {
++      "version": "0.6.1",
++      "resolved": "https://registry.npmjs.org/mj-context-menu/-/mj-context-menu-0.6.1.tgz",
++      "integrity": "sha512-7NO5s6n10TIV96d4g2uDpG7ZDpIhMh0QNfGdJw/W47JswFcosz457wqz/b5sAKvl12sxINGFCn80NZHKwxQEXA==",
++      "license": "Apache-2.0",
++      "dev": true
++    },
+     "node_modules/pako": {
+       "version": "1.0.11",
+       "resolved": "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz",
+@@ -1407,7 +1466,6 @@
+       "version": "19.3.0",
+       "resolved": "https://registry.npmjs.org/react/-/react-19.3.0.tgz",
+       "integrity": "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==",
+-      "dev": true,
+       "license": "MIT",
+       "engines": {
+         "node": ">=0.10.0"
+@@ -1477,6 +1535,21 @@
+       "integrity": "sha512-MATJdZp8sLqDl/68LfQmbP8zKPLQNV6BIZoIgrscFDQ+RsvK/BxeDQOgyxKKoh0y/8h3BqVFnCqQ/gd+reiIXA==",
+       "license": "MIT"
+     },
++    "node_modules/speech-rule-engine": {
++      "version": "4.1.4",
++      "resolved": "https://registry.npmjs.org/speech-rule-engine/-/speech-rule-engine-4.1.4.tgz",
++      "integrity": "sha512-i/VCLG1fvRc95pMHRqG4aQNscv+9aIsqA2oI7ZQS51sTdUcDHYX6cpT8/tqZ+enjs1tKVwbRBWgxut9SWn+f9g==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@xmldom/xmldom": "0.9.10",
++        "commander": "13.1.0",
++        "wicked-good-xpath": "1.3.0"
++      },
++      "bin": {
++        "sre": "bin/sre"
++      },
++      "dev": true
++    },
+     "node_modules/string_decoder": {
+       "version": "1.1.1",
+       "resolved": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.1.1.tgz",
+@@ -1539,6 +1612,13 @@
+       "resolved": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
+       "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==",
+       "license": "MIT"
++    },
++    "node_modules/wicked-good-xpath": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/wicked-good-xpath/-/wicked-good-xpath-1.3.0.tgz",
++      "integrity": "sha512-Gd9+TUn5nXdwj/hFsPVx5cuHHiF5Bwuc30jZ4+ronF1qHK5O7HD0sgmXWSEgwKquT3ClLoKPVbO6qGwVwLzvAw==",
++      "license": "MIT",
++      "dev": true
+     }
+   }
+ }
+diff --git a/package.json b/package.json
+index ded76e5..6e9a9de 100644
+--- a/package.json
++++ b/package.json
+@@ -1 +1,169 @@
+-{"name":"@wieslawsoltes/richtextweb","version":"0.3.0","description":"Reusable rich text engine, flow documents, web components and .NET-style MVVM APIs for JavaScript and React","type":"module","license":"MIT","author":"RichTextWeb contributors","repository":{"type":"git","url":"git+https://github.com/wieslawsoltes/RichTextWeb.git"},"homepage":"https://wieslawsoltes.github.io/RichTextWeb/","bugs":"https://github.com/wieslawsoltes/RichTextWeb/issues","main":"./dist/cjs/index.js","module":"./dist/esm/index.js","types":"./dist/types/index.d.ts","unpkg":"./dist/richtextweb.global.js","jsdelivr":"./dist/richtextweb.global.js","exports":{".":{"types":"./dist/types/index.d.ts","import":"./dist/esm/index.js","require":"./dist/cjs/index.js"},"./core":{"types":"./dist/types/core.d.ts","import":"./dist/esm/core.js","require":"./dist/cjs/core.js"},"./web":{"types":"./dist/types/web.d.ts","import":"./dist/esm/web.js","require":"./dist/cjs/web.js"},"./react":{"types":"./dist/types/react.d.ts","import":"./dist/esm/react.js","require":"./dist/cjs/react.js"},"./mvvm":{"types":"./dist/types/mvvm.d.ts","import":"./dist/esm/mvvm.js","require":"./dist/cjs/mvvm.js"},"./formats":{"types":"./dist/types/formats.d.ts","import":"./dist/esm/formats.js","require":"./dist/cjs/formats.js"},"./bridge":{"types":"./dist/types/bridge.d.ts","import":"./dist/esm/bridge.js","require":"./dist/cjs/bridge.js"},"./package.json":"./package.json","./pdf":{"types":"./dist/types/pdf.d.ts","import":"./dist/esm/pdf.js","require":"./dist/cjs/pdf.js"},"./document":{"types":"./dist/types/document-features.d.ts","import":"./dist/esm/document-features.js","require":"./dist/cjs/document-features.js"},"./collaboration":{"types":"./dist/types/collaboration.d.ts","import":"./dist/esm/collaboration.js","require":"./dist/cjs/collaboration.js"}},"files":["dist","src","docs","adapters","sample","LICENSE","NOTICE","README.md","CHANGELOG.md","README.web.md","blazor/README.md","blazor/INTEGRATION.md"],"sideEffects":["./dist/esm/control.js","./dist/esm/index.js","./dist/cjs/control.js","./dist/cjs/index.js"],"engines":{"node":">=22.13.0"},"keywords":["rich-text","flowdocument","richtextbox","wpf","winui","avalonia","mvvm","web-components","react","markdown","docx","pdf"],"scripts":{"build":"node scripts/build.mjs","typecheck":"tsc --noEmit","test":"node scripts/test.mjs","test:browser":"node scripts/browser-test.mjs","test:package":"node scripts/package-test.mjs","build:demo":"node scripts/build-demo.mjs","dev":"node scripts/serve.mjs","check":"npm run build && npm test && npm run build:demo && npm run test:package","benchmark":"node scripts/benchmark.mjs","prepack":"npm run build","format":"prettier --write \"{src,sample,scripts,tests,docs,adapters,web,.github}/**/*.{ts,js,mjs,css,html,json,yml,yaml,md}\" \"*.{json,md}\"","format:check":"prettier --check \"{src,sample,scripts,tests,docs,adapters,web,.github}/**/*.{ts,js,mjs,css,html,json,yml,yaml,md}\" \"*.{json,md}\""},"dependencies":{"@pdf-lib/fontkit":"1.1.1","jszip":"3.10.2","marked":"18.0.12","pdf-lib":"1.17.1","pdfjs-dist":"6.3.289"},"peerDependencies":{"react":"^18.3.0 || ^19.0.0"},"peerDependenciesMeta":{"react":{"optional":true}},"devDependencies":{"@types/node":"26.5.1","@types/react":"19.3.0","@wieslawsoltes/dockyard":"0.1.0","@wieslawsoltes/dynamicdataweb":"0.1.1","@wieslawsoltes/quikgraphweb":"0.2.0","@wieslawsoltes/rbushweb":"0.1.1","@wieslawsoltes/reactiveweb":"0.2.0","@wieslawsoltes/ribbon-web":"0.1.1","@wieslawsoltes/treedatagridweb":"0.1.0","esbuild":"0.28.2","playwright":"1.63.0","prettier":"3.9.6","react":"19.3.0","react-dom":"19.3.0","rxjs":"7.8.2","typescript":"7.0.2"},"publishConfig":{"access":"public","provenance":true}}
++{
++  "name": "@wieslawsoltes/richtextweb",
++  "version": "0.3.0",
++  "description": "Reusable rich text engine, flow documents, web components and .NET-style MVVM APIs for JavaScript and React",
++  "type": "module",
++  "license": "MIT",
++  "author": "RichTextWeb contributors",
++  "repository": {
++    "type": "git",
++    "url": "git+https://github.com/wieslawsoltes/RichTextWeb.git"
++  },
++  "homepage": "https://wieslawsoltes.github.io/RichTextWeb/",
++  "bugs": "https://github.com/wieslawsoltes/RichTextWeb/issues",
++  "main": "./dist/cjs/index.js",
++  "module": "./dist/esm/index.js",
++  "types": "./dist/types/index.d.ts",
++  "unpkg": "./dist/richtextweb.global.js",
++  "jsdelivr": "./dist/richtextweb.global.js",
++  "exports": {
++    ".": {
++      "types": "./dist/types/index.d.ts",
++      "import": "./dist/esm/index.js",
++      "require": "./dist/cjs/index.js"
++    },
++    "./core": {
++      "types": "./dist/types/core.d.ts",
++      "import": "./dist/esm/core.js",
++      "require": "./dist/cjs/core.js"
++    },
++    "./web": {
++      "types": "./dist/types/web.d.ts",
++      "import": "./dist/esm/web.js",
++      "require": "./dist/cjs/web.js"
++    },
++    "./react": {
++      "types": "./dist/types/react.d.ts",
++      "import": "./dist/esm/react.js",
++      "require": "./dist/cjs/react.js"
++    },
++    "./mvvm": {
++      "types": "./dist/types/mvvm.d.ts",
++      "import": "./dist/esm/mvvm.js",
++      "require": "./dist/cjs/mvvm.js"
++    },
++    "./formats": {
++      "types": "./dist/types/formats.d.ts",
++      "import": "./dist/esm/formats.js",
++      "require": "./dist/cjs/formats.js"
++    },
++    "./bridge": {
++      "types": "./dist/types/bridge.d.ts",
++      "import": "./dist/esm/bridge.js",
++      "require": "./dist/cjs/bridge.js"
++    },
++    "./package.json": "./package.json",
++    "./pdf": {
++      "types": "./dist/types/pdf.d.ts",
++      "import": "./dist/esm/pdf.js",
