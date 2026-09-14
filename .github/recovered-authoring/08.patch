@@ -1,0 +1,328 @@
++    if (
++      !["PrintLayout", "WebLayout", "ReadMode", "Outline", "Draft"].includes(
++        value,
++      )
++    )
++      throw new TypeError("Unknown document view mode.");
++    const changed = value !== this._documentView;
++    this._documentView = value;
++    this.setPresentationReadOnly(value === "ReadMode");
++    if (this.getAttribute("document-view") !== value)
++      this.setAttribute("document-view", value);
++    const mode =
++      value === "PrintLayout" || value === "ReadMode" ? "page" : "continuous";
++    if (this.ViewMode !== mode) this.ViewMode = mode;
++    else if (changed) {
++      this.configureOutline();
++      this.configurePagination();
++    }
++    this.emit("viewchange", {
++      documentView: value,
++      pageArrangement: this.PageArrangement,
++      zoomMode: this.ZoomMode,
++    });
++  }
++  get PageArrangement(): PageArrangement {
++    return this._arrangement;
++  }
++  set PageArrangement(value: PageArrangement) {
++    if (
++      !["SinglePage", "TwoPages", "Vertical", "MultiplePages"].includes(value)
++    )
++      throw new TypeError("Unknown page arrangement.");
++    this._arrangement = value;
++    if (this.getAttribute("page-arrangement") !== value)
++      this.setAttribute("page-arrangement", value);
++    this.updatePageArrangement();
++    this.emit("viewchange", {
++      documentView: this.DocumentView,
++      pageArrangement: value,
++      zoomMode: this.ZoomMode,
++    });
++  }
++  get ZoomMode(): DocumentZoomMode {
++    return this._zoomMode;
++  }
++  set ZoomMode(value: DocumentZoomMode) {
++    if (!["Custom", "PageWidth", "WholePage", "TwoPages"].includes(value))
++      throw new TypeError("Unknown zoom mode.");
++    this._zoomMode = value;
++    if (this.getAttribute("zoom-mode") !== value)
++      this.setAttribute("zoom-mode", value);
++    this.applyZoomMode();
++  }
++  get OutlineLevel(): number {
++    return this._outlineLevel;
++  }
++  set OutlineLevel(value: number) {
++    if (!Number.isInteger(value) || value < 1 || value > 9)
++      throw new RangeError(
++        "OutlineLevel must be between 1 and 9; 9 includes body text.",
++      );
++    this._outlineLevel = value;
++    this.configureOutline();
++  }
++  private configureOutline(): void {
++    if (!this._editor) return;
++    this._editor
++      .querySelectorAll<HTMLElement>("[data-rt-paragraph]")
++      .forEach((element) => {
++        const level =
++          Number(
++            element.dataset.rtHeading ||
++              element.tagName.match(/^H([1-6])$/)?.[1],
++          ) || 9;
++        element.toggleAttribute("data-outline-heading", level < 9);
++        element.toggleAttribute(
++          "data-outline-hidden",
++          this.DocumentView === "Outline" && level > this._outlineLevel,
++        );
++      });
++  }
++  private applyZoomMode(): void {
++    if (
++      !this._viewport ||
++      !this._sheet ||
++      this.ViewMode !== "page" ||
++      this._fittingZoom ||
++      this.ZoomMode === "Custom"
++    )
++      return;
++    const style = this.ownerDocument.defaultView!.getComputedStyle(
++      this._viewport,
++    );
++    const width =
++      this._viewport.clientWidth -
++      parseFloat(style.paddingLeft) -
++      parseFloat(style.paddingRight);
++    const height =
++      this._viewport.clientHeight -
++      parseFloat(style.paddingTop) -
++      parseFloat(style.paddingBottom);
++    if (width < 1 || height < 1) return;
++    const zoom =
++      this.ZoomMode === "TwoPages"
++        ? Math.min(
++            (width - 24) / (2 * this._settings.PageWidth),
++            height / this._settings.PageHeight,
++          )
++        : this.ZoomMode === "WholePage"
++          ? Math.min(
++              width / this._settings.PageWidth,
++              height / this._settings.PageHeight,
++            )
++          : width / this._settings.PageWidth;
++    this._fittingZoom = true;
++    try {
++      if (Math.abs(this.Zoom - Math.max(0.25, Math.min(4, zoom))) > 0.001)
++        this.Zoom = zoom;
++    } finally {
++      this._fittingZoom = false;
++    }
++  }
+   override attributeChangedCallback(
+     name: string,
+     oldValue: string | null,
+     value: string | null,
+   ): void {
+     super.attributeChangedCallback(name, oldValue, value);
+-    if (name === "zoom") this.configurePagination();
+-    if (name === "view-mode" && this.isConnected) this.Refresh();
++    if (oldValue === value) return;
++    if (name === "document-view" && value && value !== this.DocumentView)
++      this.DocumentView = value as DocumentViewMode;
++    if (name === "page-arrangement" && value && value !== this.PageArrangement)
++      this.PageArrangement = value as PageArrangement;
++    if (name === "zoom-mode" && value && value !== this.ZoomMode)
++      this.ZoomMode = value as DocumentZoomMode;
++    if (name === "zoom") {
++      if (!this._fittingZoom) {
++        this._zoomMode = "Custom";
++        if (this.getAttribute("zoom-mode") !== "Custom")
++          this.setAttribute("zoom-mode", "Custom");
++      }
++      if (this._sheet) this._sheet.style.zoom = String(this.Zoom);
++      this._gridKey = "";
++      this.updatePageArrangement();
++    }
++    if (name === "view-mode" && this.isConnected) {
++      if (
++        value === "continuous" &&
++        ["PrintLayout", "ReadMode"].includes(this.DocumentView)
++      )
++        this.DocumentView = "WebLayout";
++      if (
++        value === "page" &&
++        !["PrintLayout", "ReadMode"].includes(this.DocumentView)
++      )
++        this.DocumentView = "PrintLayout";
++      this.Refresh();
++    }
+   }
+   get PageCount(): number {
+     return this._layout?.PageCount || 1;
+@@ -1696,6 +1970,18 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+     const changed = number !== this._pageNumber;
+     this._pageNumber = number;
+     this.updatePageView();
++    if (changed && this._viewport && this._grid) {
++      const slot = this._pageSlots.get(number);
++      if (slot) {
++        const top = slot.offsetTop - this._grid.offsetTop;
++        if (
++          top < this._viewport.scrollTop ||
++          top + Math.min(slot.offsetHeight, this._viewport.clientHeight) >
++            this._viewport.scrollTop + this._viewport.clientHeight
++        )
++          this._viewport.scrollTop = top;
++      }
++    }
+     if (changed)
+       this.emit("pagechange", {
+         pageNumber: number,
+@@ -1706,6 +1992,15 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+   }
+   override Execute(command: string, parameter?: any): unknown {
+     switch (command.replace(/[\s_-]/g, "").toLowerCase()) {
++      case "documentview":
++      case "viewmode":
++        return (this.DocumentView = parameter);
++      case "pagearrangement":
++        return (this.PageArrangement = parameter);
++      case "zoommode":
++        return (this.ZoomMode = parameter);
++      case "outlinelevel":
++        return (this.OutlineLevel = Number(parameter));
+       case "nextpage":
+         return this.NextPage();
+       case "previouspage":
+@@ -1720,13 +2015,21 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+         return super.Execute(command, parameter);
+     }
+   }
+-  /** Wait for font layout and measure real column fragments in the screen viewer. */
++  /** Measure only after document/geometry changes; caret, page and zoom navigation reuse the layout. */
+   Repaginate(): Promise<PageLayoutResult> {
+     if (this.ViewMode === "continuous")
+       return Promise.reject(
+         new Error("Screen pagination requires page view mode."),
+       );
+     if (this._layoutPending) return this._layoutPending;
++    if (
++      this._layout &&
++      this._measuredEpoch === this._layoutEpoch &&
++      this._layout.Revision === this.Document.Revision
++    ) {
++      this._cacheHits++;
++      return Promise.resolve(this._layout);
++    }
+     if (
+       !this.isConnected ||
+       !this._editor ||
+@@ -1742,38 +2045,29 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+         this.ownerDocument.defaultView!.requestAnimationFrame(() => resolve()),
+       );
+       if (this._pageDisposed) throw new Error("Page viewer is disposed.");
++      if (this.ViewMode !== "page")
++        throw new Error("Screen pagination requires page view mode.");
+       this.configurePagination();
+       if (!this.isConnected || this._editor!.getBoundingClientRect().width < 1)
+         throw new Error("Screen pagination requires a visible layout surface.");
++      const started = performance.now(),
++        epoch = this._layoutEpoch;
++      this.alignPhysicalPageBreaks();
+       this._layout = measurePageLayout(
+         this._editor!,
+         this._render!,
+-        this.Document.ToJSON(),
++        this._paginationDocument!,
+         this.Document.Revision,
+         this._settings,
+       );
+       this._pageNumber = Math.min(this._pageNumber, this._layout.PageCount);
+       this.indexPageNotes();
+-      const currentPage = this._pageNumber;
+-      const props = this._paginationDocument?.props || {};
+-      if (
+-        [
+-          "Headers",
+-          "Footers",
+-          "FirstPageHeader",
+-          "FirstPageFooter",
+-          "EvenPageHeader",
+-          "EvenPageFooter",
+-          "Footnotes",
+-        ].some((name) => Array.isArray(props[name]) && props[name].length)
+-      ) {
+-        for (let page = 1; page <= this.PageCount; page++) {
+-          this._pageNumber = page;
+-          this.renderStories();
+-        }
+-      }
+-      this._pageNumber = currentPage;
++      this._measuredEpoch = epoch;
++      this._layoutPasses++;
+       this.updatePageView();
++      this.applyZoomMode();
++      this.updatePageArrangement();
++      this._lastLayoutDuration = performance.now() - started;
+       this.emit("paginated", { layout: this._layout });
+       return this._layout;
+     })().finally(() => {
+@@ -1781,6 +2075,56 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+     });
+     return this._layoutPending;
+   }
++  private alignPhysicalPageBreaks(): void {
++    if (!this._editor || !this._paginationDocument) return;
++    this._editor
++      .querySelectorAll("[data-rt-pagination-spacer]")
++      .forEach((node) => node.remove());
++    const s = this._settings;
++    if (s.ColumnCount > 1) {
++      const pageBreaks: DocumentNode[] = [];
++      const walk = (node: DocumentNode) => {
++        if (node.props.BreakPageBefore) pageBreaks.push(node);
++        node.children?.forEach(walk);
++      };
++      walk(this._paginationDocument);
++      for (const node of pageBreaks) {
++        const element = this._elementsById.get(node.id);
++        if (
++          !element ||
++          !element.parentElement ||
++          !element.getClientRects().length
++        )
++          continue;
++        const bounds = this._editor.getBoundingClientRect(),
++          scale = bounds.width / s.ContentWidth || 1;
++        const rtl =
++          this.ownerDocument.defaultView!.getComputedStyle(this._editor)
++            .direction === "rtl";
++        const rect = element.getClientRects()[0];
++        const offset = rtl
++          ? bounds.right - rect.right
++          : rect.left - bounds.left;
++        const column = Math.max(
++          0,
++          Math.floor(
++            (offset / scale + 0.5) / (s.TextColumnWidth + s.ColumnGap),
++          ),
++        );
++        const missing =
++          (s.ColumnCount - (column % s.ColumnCount)) % s.ColumnCount;
++        for (let index = 0; index < missing; index++) {
++          const spacer = this.ownerDocument.createElement("div");
++          spacer.dataset.rtPaginationSpacer = "";
++          spacer.contentEditable = "false";
++          spacer.setAttribute("aria-hidden", "true");
++          spacer.style.cssText = `height:${s.ContentHeight}px;break-before:column;break-after:column;break-inside:avoid-column;`;
++          element.parentElement.insertBefore(spacer, element);
++        }
++      }
++    }
++    this._lastDOMHTML = this._editor.innerHTML;
++  }
+   override Dispose(): void {
+     this._pageDisposed = true;
+     super.Dispose();
