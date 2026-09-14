@@ -1,0 +1,105 @@
+name: Verify existing npm release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing RichTextWeb release tag (empty uses package.json)
+        required: false
+        default: ""
+        type: string
+  push:
+    branches: [main, fix/npm-release-verification]
+    paths: [.github/workflows/npm-verify.yml]
+permissions:
+  contents: read
+concurrency:
+  group: npm-verify-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: npm
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve existing release
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFile, appendFile } from 'node:fs/promises';
+          const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+          const tag = process.env.INPUT_TAG || `v${pkg.version}`;
+          if (!/^v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(tag)) throw Error('Invalid release tag');
+          await appendFile(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
+          JS
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          path: .release/source
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Validate release identity and download existing assets
+        working-directory: .release/source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { readFile, appendFile } from 'node:fs/promises';
+          const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+          if (pkg.name !== '@wieslawsoltes/richtextweb' || `v${pkg.version}` !== process.env.RELEASE_TAG) throw Error('Release identity mismatch');
+          await appendFile(process.env.GITHUB_ENV, `PACKAGE_SPEC=${pkg.name}@${pkg.version}\n`);
+          JS
+          [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == false ]]
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tgz' --pattern SHA256SUMS.txt --dir ../npm
+          echo "Release commit: $(git rev-parse HEAD)"
+      - name: Check release checksum and public metadata
+        id: registry
+        working-directory: .release/source
+        run: node scripts/npm-registry.mjs prepare ../npm
+      - name: Install the CLI for read-only staging diagnostics
+        if: steps.registry.outputs.exists != 'true'
+        run: npm install --global npm@11 --ignore-scripts
+      - name: Inspect only this package's staged publication
+        if: steps.registry.outputs.exists != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          import { spawnSync } from 'node:child_process';
+          import { appendFile } from 'node:fs/promises';
+          const result = spawnSync('npm', ['stage', 'list', process.env.PACKAGE_SPEC, '--json', '--registry=https://registry.npmjs.org'], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024 });
+          if (result.status !== 0) {
+            console.log('Staging details are unavailable with this credential; continuing independent public verification.');
+          } else {
+            const data = JSON.parse(result.stdout);
+            // Never print account details or credentials from the registry response.
+            const safeKeys = new Set(['id', 'stageId', 'stage_id', 'name', 'packageName', 'version', 'status', 'state', 'requiresApproval']);
+            const rows = [];
+            function visit(value, depth = 0) {
+              if (!value || typeof value !== 'object' || depth > 8) return;
+              const row = Object.fromEntries(Object.entries(value).filter(([key, item]) => safeKeys.has(key) && ['string', 'boolean', 'number'].includes(typeof item)));
+              if (Object.keys(row).length) rows.push(row);
+              for (const item of Object.values(value)) visit(item, depth + 1);
+            }
+            visit(data);
+            console.log(JSON.stringify({ Package: process.env.PACKAGE_SPEC, Staging: rows }, null, 2));
+          }
+          await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Publication verification\nThe public version was not yet visible at the initial check. No package was republished, approved, rejected, or modified. If npm lists this version as awaiting approval, a maintainer must approve that exact staged artifact with 2FA before public verification can pass. See https://docs.npmjs.com/staged-publishing/.\n`);
+          JS
+      - name: Verify exact public tarball without publishing
+        working-directory: .release/source
+        env:
+          RELEASE_TARBALL: ${{ steps.registry.outputs.tarball }}
+        run: |
+          node scripts/npm-registry.mjs verify "$RELEASE_TARBALL"
+          printf '\nPublic npm metadata and downloaded tarball match the existing release bytes.\n' >> "$GITHUB_STEP_SUMMARY"
