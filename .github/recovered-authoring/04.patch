@@ -1,0 +1,197 @@
++      case "vertical-pages":
++        editor.PageArrangement = "Vertical";
++        syncViewUI();
++        return;
++      case "multiple-pages":
++        editor.PageArrangement = "MultiplePages";
++        zoom(50);
++        return;
++      case "single-page":
++        editor.PageArrangement = "SinglePage";
++        syncViewUI();
++        return;
+       case "focus":
+         document.body.classList.toggle("focus");
+         return;
+@@ -790,7 +897,7 @@ function renderPanel() {
+   $("inspector-title").textContent = labels[panel];
+   let html = "";
+   if (panel === "document")
+-    html = `<section class="inspector-section"><h3>Page setup</h3><div class="paper-mini" aria-hidden="true">${"<i></i>".repeat(10)}</div><label class="field">Paper size<select id="paper-size"><option value="a4">A4 · 210 × 297 mm</option><option value="letter">Letter · 8.5 × 11 in</option></select></label><label class="field">Orientation<select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label class="field">Margins<select id="margins-select"><option value="64">Normal · 64 px</option><option value="32">Narrow · 32 px</option><option value="96">Wide · 96 px</option></select></label></section><section class="inspector-section"><h3>Document details</h3><div class="property-row"><span>Format</span><strong>Flow document</strong></div><div class="property-row"><span>Paragraphs</span><strong id="stat-paragraphs"></strong></div><div class="property-row"><span>Characters</span><strong id="stat-characters"></strong></div><div class="property-row"><span>Revision</span><strong id="stat-revision"></strong></div></section><section class="inspector-section"><h3>Make it yours</h3><p class="note">Select text to apply formatting. Use heading styles to organize your ideas.</p><p class="note"><span class="help-key">Ctrl B</span> Bold &nbsp; <span class="help-key">Ctrl I</span> Italic</p><button class="plain-button wide" id="panel-export">Export document ↗</button></section>`;
++    html = `<section class="inspector-section"><h3>Page setup</h3><div class="paper-mini" aria-hidden="true">${"<i></i>".repeat(10)}</div><label class="field">Paper size<select id="paper-size"><option value="a4">A4 · 210 × 297 mm</option><option value="letter">Letter · 8.5 × 11 in</option></select></label><label class="field">Orientation<select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label class="field">Margins<select id="margins-select"><option value="72">Normal · 72 px</option><option value="32">Narrow · 32 px</option><option value="96">Wide · 96 px</option></select></label></section><section class="inspector-section"><h3>Document details</h3><div class="property-row"><span>Format</span><strong>Flow document</strong></div><div class="property-row"><span>Paragraphs</span><strong id="stat-paragraphs"></strong></div><div class="property-row"><span>Characters</span><strong id="stat-characters"></strong></div><div class="property-row"><span>Revision</span><strong id="stat-revision"></strong></div></section><section class="inspector-section"><h3>Make it yours</h3><p class="note">Select text to apply formatting. Use heading styles to organize your ideas.</p><p class="note"><span class="help-key">Ctrl B</span> Bold &nbsp; <span class="help-key">Ctrl I</span> Italic</p><button class="plain-button wide" id="panel-export">Export document ↗</button></section>`;
+   if (panel === "comments") html = reviewPanel();
+   if (panel === "source")
+     html = `<section class="inspector-section"><p class="note">Edit the source and apply it to the shared document model.</p><div class="source-buttons"><select id="source-format"><option value="markdown">Markdown</option><option value="html">HTML</option><option value="json">JSON</option><option value="xaml">XAML</option><option value="rtf">RTF</option></select><button id="apply-source">Apply</button></div><textarea id="source-code" class="code-area" aria-label="Document source" spellcheck="false"></textarea><button id="refresh-source" class="plain-button wide">Refresh from document</button><p class="note">JSON preserves the engine model. Other formats preserve their supported features; see format documentation.</p></section>`;
+@@ -811,13 +918,46 @@ function renderPanel() {
+       )
+       .join(
+         "",
+-      )}<p class="note">Exports use the features supported by each format. PDF uses a separate layout exporter; it is not a pixel-identical print layout.</p><button class="plain-button wide" id="browser-print">Browser print / PDF</button></section>`;
++      )}<p class="note">Exports use the features supported by each format. PDF export includes vector equations and a separate flow layout. Use Browser print / PDF for the measured page layout, headers and columns.</p><button class="plain-button wide" id="browser-print">Browser print / PDF</button></section>`;
+   $("inspector-content").innerHTML = html;
+   if (panel === "document") {
+     updateStats();
+     $("paper-size").onchange = (e) => run(e.target.value);
+-    $("orientation").onchange = () => run("landscape");
++    $("orientation").value =
++      editor.Document.PageWidth > editor.Document.PageHeight
++        ? "landscape"
++        : "portrait";
++    $("paper-size").value =
++      Math.abs(
++        Math.min(editor.Document.PageWidth, editor.Document.PageHeight) - 816,
++      ) < 2
++        ? "letter"
++        : "a4";
++    const padding = editor.Document.PagePadding;
++    const uniform =
++      typeof padding === "number"
++        ? padding
++        : padding &&
++            padding.Left === padding.Right &&
++            padding.Left === padding.Top &&
++            padding.Left === padding.Bottom
++          ? padding.Left
++          : null;
++    if (![72, 32, 96].includes(uniform))
++      $("margins-select").add(new Option("Custom margins", "custom"));
++    $("margins-select").value =
++      uniform === null || ![72, 32, 96].includes(uniform)
++        ? "custom"
++        : String(uniform);
++    $("orientation").onchange = (event) => {
++      if (
++        (event.target.value === "landscape") !==
++        editor.Document.PageWidth > editor.Document.PageHeight
++      )
++        run("landscape");
++    };
+     $("margins-select").onchange = (e) =>
++      e.target.value !== "custom" &&
+       setDocumentProp("PagePadding", +e.target.value);
+     $("panel-export").onclick = () => openPanel("export");
+   }
+@@ -958,17 +1098,7 @@ async function download(format) {
+   toast(`Exported ${ext.toUpperCase()} document`);
+ }
+ function printDocument() {
+-  const w = window.open("", "_blank");
+-  if (!w) {
+-    toast("Allow popups to open print preview.");
+-    return;
+-  }
+-  w.document.write(
+-    `<!doctype html><html><head><title>${esc($("document-title").value)}</title><style>body{font:16px/1.6 'Segoe UI',sans-serif;max-width:700px;margin:auto}table{border-collapse:collapse;width:100%}td,th{border:1px solid #cbd5e1;padding:8px}img{max-width:100%}@page{margin:20mm}h1,h2,h3{break-after:avoid}</style></head><body>${RT.toHTML(editor.Document)}</body></html>`,
+-  );
+-  w.document.close();
+-  if (w.document.readyState === "complete") w.print();
+-  else w.addEventListener("load", () => w.print(), { once: true });
++  safe(() => editor.Print());
+ }
+ function find() {
+   const q = $("find-input").value;
+@@ -1050,6 +1180,18 @@ $("toggle-navigation").onclick = () => run("navigation");
+ $("show-navigation").onclick = () => run("navigation");
+ $("toggle-inspector").onclick = () => wordWorkspace?.TogglePane("properties");
+ $("export-primary").onclick = () => openPanel("export");
++$("document-view").onchange = (event) => setView(event.target.value);
++$("page-arrangement").onchange = (event) => {
++  editor.PageArrangement = event.target.value;
++  if (event.target.value === "TwoPages") editor.ZoomMode = "TwoPages";
++  syncViewUI();
++};
++$("fit-page").onclick = () => {
++  editor.ZoomMode = "WholePage";
++  syncViewUI();
++};
++editor.addEventListener("viewchange", syncViewUI);
++editor.addEventListener("paginated", syncViewUI);
+ $("zoom").oninput = (e) => zoom(+e.target.value);
+ $("zoom-out").onclick = () => zoom(state.zoom - 10);
+ $("zoom-in").onclick = () => zoom(state.zoom + 10);
+ diff --git a/sample/index.html b/sample/index.html
+index a98e285..2677019 100644
+--- a/sample/index.html
++++ b/sample/index.html
+@@ -133,13 +133,30 @@
+         ><span id="page-status">Page 1</span><span id="word-count">0 words</span
+         ><span id="selection-status">No selection</span
+         ><span class="status-spacer"></span><span id="editor-mode">Editing</span
++        ><select id="document-view" aria-label="Document view">
++          <option value="PrintLayout">Print layout</option>
++          <option value="WebLayout">Web layout</option>
++          <option value="ReadMode">Read mode</option>
++          <option value="Outline">Outline</option>
++          <option value="Draft">Draft</option></select
++        ><select id="page-arrangement" aria-label="Page arrangement">
++          <option value="SinglePage">One page</option>
++          <option value="TwoPages">Two pages</option>
++          <option value="Vertical">Vertical pages</option>
++          <option value="MultiplePages">Multiple pages</option></select
++        ><button
++          id="fit-page"
++          title="Fit whole page"
++          aria-label="Fit whole page"
++        >
++          ⛶</button
+         ><button id="view-toggle">▣ <span>Page</span></button
+         ><button id="zoom-out" aria-label="Zoom out">−</button
+         ><input
+           id="zoom"
+           type="range"
+           min="25"
+-          max="150"
++          max="400"
+           value="100"
+           aria-label="Zoom"
+         /><button id="zoom-in" aria-label="Zoom in">+</button
+ diff --git a/sample/pdf-tools.js b/sample/pdf-tools.js
+index ef6ecf5..8c2e8bd 100644
+--- a/sample/pdf-tools.js
++++ b/sample/pdf-tools.js
+@@ -8,7 +8,6 @@ export async function openPDFTools(RT, toast, flowDocument) {
+   PDF.configurePDF({
+     workerSrc: asset("pdf.worker.mjs"),
+     cMapUrl: asset("cmaps/"),
+-    standardFontDataUrl: asset("standard_fonts/"),
+     wasmUrl: asset("wasm/"),
+     iccUrl: asset("iccs/"),
+   });
+ diff --git a/sample/word-ribbon.js b/sample/word-ribbon.js
+index f64ce1f..eef31a8 100644
+--- a/sample/word-ribbon.js
++++ b/sample/word-ribbon.js
+@@ -276,7 +276,7 @@ export function createDocumentRibbon({
+               t("AlignCenter", "Center", "center", { showLabel: false }),
+               t("AlignRight", "Align right", "right", { showLabel: false }),
+               t("AlignJustify", "Justify", "justify", { showLabel: false }),
+-              app("spacing", "Line spacing", "↕"),
++              t("Paragraph", "Paragraph settings", "↕"),
+             ],
+             { priority: 8 },
+           ),
+@@ -298,6 +298,7 @@ export function createDocumentRibbon({
+         [
+           group("insert-pages", "Pages", [
+             t("PageBreak", "Page break", "page", large),
++            t("ColumnBreak", "Column break", "list"),
+           ]),
+           group("insert-tables", "Tables", [
+             t("Table", "Table", "table", large),
+@@ -321,7 +322,8 @@ export function createDocumentRibbon({
+           group("insert-text", "Text", [
+             t("Field", "Quick parts / field", "formula"),
+             app("date", "Date & time", "clock"),
+-            app("symbol", "Symbol", "Ω"),
++            t("Symbol", "Symbol", "Ω"),
++            t("Equation", "Equation", "formula", large),
+           ]),
+         ],
+         "N",
+@@ -445,6 +447,9 @@ export function createDocumentRibbon({
+               ...large,
+               mutates: false,
+             }),
++            app("read-mode", "Read mode", "page", { ...large, mutates: false }),
++            app("outline-view", "Outline", "list", { mutates: false }),
++            app("draft-view", "Draft", "page", { mutates: false }),
