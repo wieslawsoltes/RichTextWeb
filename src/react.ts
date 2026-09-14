@@ -17,7 +17,12 @@ import {
   type VirtualizationStatistics,
   type PageLayoutResult,
   type PageLayoutPage,
+  type DocumentViewMode,
+  type PageArrangement,
+  type DocumentZoomMode,
 } from "./control.js";
+import { EquationEditor, registerEquationEditor } from "./equation-control.js";
+import type { EquationOptions } from "./equations.js";
 import type { TextSelection } from "./engine.js";
 import type { ObservableObject } from "./mvvm.js";
 
@@ -33,6 +38,18 @@ interface RichTextControlProps<TControl extends RichTextBox> extends Omit<
   acceptsTab?: boolean;
   zoom?: number;
   viewMode?: "page" | "continuous";
+  documentView?: DocumentViewMode;
+  pageArrangement?: PageArrangement;
+  zoomMode?: DocumentZoomMode;
+  outlineLevel?: number;
+  onViewChange?: (
+    state: {
+      documentView: DocumentViewMode;
+      pageArrangement: PageArrangement;
+      zoomMode: DocumentZoomMode;
+    },
+    event: CustomEvent,
+  ) => void;
   style?: CSSProperties;
   enableVirtualization?: boolean;
   virtualizationThreshold?: number;
@@ -75,6 +92,11 @@ function createEditorComponent<TControl extends RichTextBox>(
         acceptsTab = false,
         zoom = 1,
         viewMode = "page",
+        documentView,
+        pageArrangement,
+        zoomMode,
+        outlineLevel,
+        onViewChange,
         enableVirtualization = false,
         virtualizationThreshold = 200,
         virtualizationOverscan = 6,
@@ -99,6 +121,7 @@ function createEditorComponent<TControl extends RichTextBox>(
         onVirtualizationChange,
         onPaginated,
         onPageChange,
+        onViewChange,
       });
       callbacks.current = {
         onDocumentChange,
@@ -108,6 +131,7 @@ function createEditorComponent<TControl extends RichTextBox>(
         onVirtualizationChange,
         onPaginated,
         onPageChange,
+        onViewChange,
       };
       const attach = useCallback(
         (element: HTMLElement | null) => {
@@ -161,6 +185,12 @@ function createEditorComponent<TControl extends RichTextBox>(
             (event as CustomEvent).detail,
             event as CustomEvent,
           );
+        const viewChanged = (event: Event) =>
+          callbacks.current.onViewChange?.(
+            (event as CustomEvent).detail,
+            event as CustomEvent,
+          );
+        editor.addEventListener("viewchange", viewChanged);
         editor.addEventListener("virtualizationchange", virtualized);
         editor.addEventListener("paginated", paginated);
         editor.addEventListener("pagechange", pageChanged);
@@ -168,6 +198,7 @@ function createEditorComponent<TControl extends RichTextBox>(
         editor.addEventListener("selectionchange", selected);
         editor.addEventListener("commandstatechange", state);
         return () => {
+          editor.removeEventListener("viewchange", viewChanged);
           editor.removeEventListener("virtualizationchange", virtualized);
           editor.removeEventListener("paginated", paginated);
           editor.removeEventListener("pagechange", pageChanged);
@@ -191,8 +222,22 @@ function createEditorComponent<TControl extends RichTextBox>(
             editor.Document = defaultDocument;
           editor.IsReadOnly = readOnly;
           editor.AcceptsTab = acceptsTab;
-          editor.Zoom = zoom;
-          editor.ViewMode = viewMode;
+          if (editor.Zoom !== zoom && (!zoomMode || zoomMode === "Custom"))
+            editor.Zoom = zoom;
+          if (editor instanceof RichTextPageEditor && documentView)
+            editor.DocumentView = documentView;
+          else if (editor.ViewMode !== viewMode) editor.ViewMode = viewMode;
+          if (editor instanceof RichTextPageEditor) {
+            if (pageArrangement && editor.PageArrangement !== pageArrangement)
+              editor.PageArrangement = pageArrangement;
+            if (zoomMode && editor.ZoomMode !== zoomMode)
+              editor.ZoomMode = zoomMode;
+            if (
+              outlineLevel !== undefined &&
+              editor.OutlineLevel !== outlineLevel
+            )
+              editor.OutlineLevel = outlineLevel;
+          }
           if (editor.VirtualizationThreshold !== virtualizationThreshold)
             editor.VirtualizationThreshold = virtualizationThreshold;
           if (editor.VirtualizationOverscan !== virtualizationOverscan)
@@ -214,6 +259,10 @@ function createEditorComponent<TControl extends RichTextBox>(
         acceptsTab,
         zoom,
         viewMode,
+        documentView,
+        pageArrangement,
+        zoomMode,
+        outlineLevel,
         enableVirtualization,
         virtualizationThreshold,
         virtualizationOverscan,
@@ -277,3 +326,88 @@ export function useObservableProperty<T>(
   );
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
+
+export interface ReactEquationEditorProps extends Omit<
+  HTMLAttributes<HTMLElement>,
+  "children" | "onChange" | "defaultValue"
+> {
+  value?: EquationOptions;
+  defaultValue?: EquationOptions;
+  readOnly?: boolean;
+  onValueChange?: (value: EquationOptions, event: CustomEvent) => void;
+  onValidationChange?: (
+    state: { isValid: boolean; error: string },
+    event: CustomEvent,
+  ) => void;
+  onReady?: (editor: EquationEditor) => void;
+}
+/** Controlled/uncontrolled React math workbench using the same web component and local history. */
+export const ReactEquationEditor = forwardRef<
+  EquationEditor,
+  ReactEquationEditorProps
+>(function ReactEquationEditor(props, forwardedRef) {
+  const {
+    value,
+    defaultValue,
+    readOnly = false,
+    onValueChange,
+    onValidationChange,
+    onReady,
+    ...attributes
+  } = props;
+  const [editor, setEditor] = useState<EquationEditor | null>(null);
+  const attached = useRef<EquationEditor | null>(null),
+    initialized = useRef<EquationEditor | null>(null);
+  const callbacks = useRef({ onValueChange, onValidationChange, onReady });
+  callbacks.current = { onValueChange, onValidationChange, onReady };
+  const attach = useCallback(
+    (node: HTMLElement | null) => {
+      if (node) registerEquationEditor();
+      const previous = attached.current,
+        control = node as EquationEditor | null;
+      attached.current = control;
+      assignRef(forwardedRef, control);
+      setEditor(control);
+      if (!control && previous)
+        queueMicrotask(() => {
+          if (attached.current !== previous && !previous.isConnected)
+            previous.Dispose();
+        });
+    },
+    [forwardedRef],
+  );
+  useEffect(() => {
+    if (!editor) return;
+    const change = (event: Event) =>
+      callbacks.current.onValueChange?.(editor.Value, event as CustomEvent);
+    const validation = (event: Event) =>
+      callbacks.current.onValidationChange?.(
+        (event as CustomEvent).detail,
+        event as CustomEvent,
+      );
+    editor.addEventListener("equationchange", change);
+    editor.addEventListener("validationchange", validation);
+    return () => {
+      editor.removeEventListener("equationchange", change);
+      editor.removeEventListener("validationchange", validation);
+    };
+  }, [editor]);
+  useEffect(() => {
+    if (!editor) return;
+    if (initialized.current !== editor) {
+      if (value ?? defaultValue) editor.Value = (value ?? defaultValue)!;
+      editor.IsReadOnly = readOnly;
+      initialized.current = editor;
+      callbacks.current.onReady?.(editor);
+    }
+    const same =
+      value &&
+      value.Source === editor.Source &&
+      (value.Format ?? "latex") === editor.Format &&
+      !!value.DisplayMode === editor.DisplayMode &&
+      (value.AlternativeText ?? "") === (editor.Value.AlternativeText ?? "");
+    if (value && !same) editor.Value = value;
+    if (editor.IsReadOnly !== readOnly) editor.IsReadOnly = readOnly;
+  }, [editor, value, defaultValue, readOnly]);
+  return createElement("rich-equation-editor", { ...attributes, ref: attach });
+});

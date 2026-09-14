@@ -1,5 +1,6 @@
 import { build } from "esbuild";
-import { mkdir, cp, writeFile, readFile } from "node:fs/promises";
+import { mkdir, cp, writeFile, readFile, rm } from "node:fs/promises";
+await rm("site", { recursive: true, force: true });
 await mkdir("site", { recursive: true });
 await cp("sample", "site", { recursive: true });
 await build({
@@ -30,7 +31,7 @@ await cp(
   "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
   "site/pdf-assets/pdf.worker.mjs",
 );
-for (const directory of ["cmaps", "standard_fonts", "wasm", "iccs"])
+for (const directory of ["cmaps", "wasm", "iccs"])
   await cp(
     `node_modules/pdfjs-dist/${directory}`,
     `site/pdf-assets/${directory}`,
@@ -72,6 +73,24 @@ manifest.push({
   License: "Apache-2.0",
   LicenseFile: "licenses/rxjs.txt",
 });
+for (const [name, license] of [
+  ["mathjax-full", "Apache-2.0"],
+  ["mhchemparser", "Apache-2.0"],
+]) {
+  await cp(
+    `node_modules/${name}/${name === "mhchemparser" ? "LICENSE.txt" : "LICENSE"}`,
+    `site/licenses/${name}.txt`,
+  );
+  const metadata = JSON.parse(
+    await readFile(`node_modules/${name}/package.json`, "utf8"),
+  );
+  manifest.push({
+    Name: name,
+    Version: metadata.version,
+    License: license,
+    LicenseFile: `licenses/${name}.txt`,
+  });
+}
 await writeFile(
   "site/sample-dependencies.json",
   JSON.stringify(manifest, null, 2),

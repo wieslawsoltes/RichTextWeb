@@ -388,3 +388,115 @@ body.dark #document-graph {
     display: inline-block;
   }
 }
+
+/* Keep every docked panel usable at small heights and prevent cross-panel overflow. */
+#editor {
+  display: flex;
+  flex-direction: column;
+}
+.statusbar {
+  gap: 10px;
+  overflow: hidden;
+}
+.statusbar select {
+  font:
+    11px/1.2 "Segoe UI",
+    system-ui;
+  max-width: 120px;
+  height: 23px;
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--chrome);
+  color: var(--ink);
+}
+#view-toggle {
+  display: none;
+}
+#docking-workspace .ad-content,
+#docking-workspace .ad-pane-content,
+#inspector-content {
+  min-width: 0;
+  min-height: 0;
+}
+#inspector-content {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.inspector-tabs {
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
+  background: var(--chrome);
+  z-index: 1;
+}
+.catalog-detail {
+  overflow: auto;
+  max-height: 30%;
+  overflow-wrap: anywhere;
+}
+#document-grid {
+  min-height: 60px;
+}
+.explorer-heading,
+.explorer-controls,
+.explorer-actions,
+.graph-actions {
+  flex-shrink: 0;
+}
+.all-tools-panel {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.page-preview-dialog {
+  max-width: 96vw;
+  max-height: 94dvh;
+  padding: 14px;
+  overflow: hidden;
+}
+.page-preview-dialog flow-document-page-viewer {
+  height: calc(88dvh - 60px);
+  min-height: 0;
+}
+.dark .statusbar select {
+  background: var(--chrome);
+  color: var(--ink);
+}
+@media (max-width: 1100px) {
+  #selection-status,
+  #show-navigation span {
+    display: none;
+  }
+  .statusbar {
+    gap: 7px;
+  }
+  .statusbar select {
+    max-width: 104px;
+  }
+  #editor-mode {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  #word-count,
+  #page-arrangement,
+  #fit-page {
+    display: none;
+  }
+  .statusbar select {
+    max-width: 102px;
+  }
+  .statusbar {
+    gap: 5px;
+  }
+  #zoom {
+    width: 68px;
+  }
+  .titlebar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .page-preview-dialog {
+    padding: 8px;
+  }
+}

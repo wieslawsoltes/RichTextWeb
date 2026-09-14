@@ -1,4 +1,10 @@
 import {
+  renderEquation,
+  equationOptions,
+  sanitizeMathML,
+  serializeMathNode,
+} from "./equations.js";
+import {
   FlowDocument,
   FigureLength,
   FigureUnitType,
@@ -8,7 +14,7 @@ import {
   type DocumentNode,
 } from "./model.js";
 import { normalizeFloatingLayout } from "./floating-layout.js";
-import { marked } from "marked";
+import { Marked } from "marked";
 import {
   parseMarkup,
   escapeMarkup,
@@ -88,12 +94,19 @@ function thickness(value: any): string | undefined {
     ]
       .map(cssLength)
       .join(" ");
-  if (typeof value === "string" && value.includes(","))
-    return value
+  if (typeof value === "string" && value.includes(",")) {
+    const v = value
       .split(",")
       .map((v) => cssLength(v.trim()))
-      .filter(Boolean)
-      .join(" ");
+      .filter(Boolean);
+    return (
+      v.length === 4
+        ? [v[1], v[2], v[3], v[0]]
+        : v.length === 2
+          ? [v[1], v[0]]
+          : v
+    ).join(" ");
+  }
   return cssLength(value);
 }
 function styles(props: Record<string, any>): string {
@@ -403,6 +416,11 @@ function htmlNode(node: DocumentNode, phrasingBlocks = false): string {
         "td",
         ` colspan="${Math.max(1, Math.min(1000, Number(p.ColumnSpan) || 1))}" rowspan="${Math.max(1, Math.min(1000, Number(p.RowSpan) || 1))}"`,
       );
+    case "Equation": {
+      const options = equationOptions(node),
+        rendered = renderEquation(options);
+      return `<span data-rt-equation="${options.Format}" data-rt-source="${escapeMarkup(options.Source)}" data-rt-display="${!!options.DisplayMode}" role="math" aria-label="${escapeMarkup(options.AlternativeText || rendered.Text)}" style="${escapeMarkup(css)};display:${options.DisplayMode ? "block;text-align:center;margin:.6em 0" : "inline-block"};line-height:normal;direction:ltr">${rendered.SVG}</span>`;
+    }
     case "Image": {
       const src = safeURL(p.Source, true);
       const layout = safeFloatingProperties(p, "Image");
@@ -521,7 +539,6 @@ const suppressedHTML = new Set([
   "template",
   "noscript",
   "svg",
-  "math",
   "head",
   "meta",
   "link",
@@ -575,6 +592,29 @@ function htmlInlines(
       continue;
     }
     if (suppressedHTML.has(name)) continue;
+    if (node.attrs["data-rt-equation"] || name === "math") {
+      const format =
+        node.attrs["data-rt-equation"] === "latex" ? "latex" : "mathml";
+      const source =
+        name === "math"
+          ? sanitizeMathML(serializeMathNode(node))
+          : (node.attrs["data-rt-source"] ?? "");
+      renderEquation({
+        Source: source,
+        Format: format,
+        DisplayMode: node.attrs["data-rt-display"] === "true",
+      });
+      result.push(
+        makeNode("Equation", [], {
+          ...p,
+          EquationSource: source,
+          EquationFormat: format,
+          DisplayMode: node.attrs["data-rt-display"] === "true",
+          AlternativeText: node.attrs["aria-label"] ?? "",
+        }),
+      );
+      continue;
+    }
     if (
       node.attrs["data-rt-floating"] === "Figure" ||
       node.attrs["data-rt-floating"] === "Floater"
@@ -819,6 +859,12 @@ function markdownInline(node: DocumentNode): string {
         ? `[${inner}](${uri.replace(/[()\s]/g, (c) => encodeURIComponent(c))})`
         : inner;
     }
+    case "Equation": {
+      const options = equationOptions(node);
+      if (options.Format !== "mathml" && !options.Source.includes("\n"))
+        return `$${options.Source}$`;
+      return `<span data-rt-equation="${options.Format}" data-rt-source="${escapeMarkup(options.Source)}" data-rt-display="${!!options.DisplayMode}">[equation]</span>`;
+    }
     case "Image": {
       const uri = safeURL(node.props.Source, true);
       return uri
@@ -837,6 +883,14 @@ function markdownInline(node: DocumentNode): string {
 function markdownBlocks(nodes: DocumentNode[], depth = 0): string {
   return nodes
     .map((node) => {
+      if (
+        node.type === "Paragraph" &&
+        node.children?.length === 1 &&
+        node.children[0].type === "Equation" &&
+        node.children[0].props.DisplayMode &&
+        node.children[0].props.EquationFormat !== "mathml"
+      )
+        return `$$\n${node.children[0].props.EquationSource}\n$$`;
       if (node.type === "Paragraph")
         return (
           (node.props.HeadingLevel
@@ -898,13 +952,51 @@ function markdownBlocks(nodes: DocumentNode[], depth = 0): string {
 export function toMarkdown(doc: FlowDocument): string {
   return markdownBlocks(doc.ToJSON().children ?? []);
 }
+const markdownParser = new Marked({ gfm: true, async: false });
+const equationMarkup = (source: string, display: boolean) =>
+  `<span data-rt-equation="latex" data-rt-source="${escapeMarkup(source)}" data-rt-display="${display}">[equation]</span>`;
+markdownParser.use({
+  extensions: [
+    {
+      name: "blockEquation",
+      level: "block",
+      start: (source: string) => source.indexOf("$$"),
+      tokenizer(source: string) {
+        const match =
+          source.match(/^\$\$[ \t]*\n([\s\S]+?)\n\$\$[ \t]*(?:\n|$)/) ??
+          source.match(/^\$\$([^\n]+?)\$\$[ \t]*(?:\n|$)/);
+        if (match)
+          return { type: "blockEquation", raw: match[0], source: match[1] };
+      },
+      renderer(token: any) {
+        return `<p>${equationMarkup(token.source, true)}</p>`;
+      },
+    },
+    {
+      name: "inlineEquation",
+      level: "inline",
+      start: (source: string) => source.indexOf("$"),
+      tokenizer(source: string) {
+        const match = source.match(
+          /^\$(?![\s$])((?:\\.|[^$\n\\])+?)\$(?![\d$])/,
+        );
+        if (match && !/\s$/.test(match[1]))
+          return { type: "inlineEquation", raw: match[0], source: match[1] };
+      },
+      renderer(token: any) {
+        return equationMarkup(token.source, false);
+      },
+    },
+  ],
+});
 export function fromMarkdown(markdown: string): FlowDocument {
-  return fromHTML(
-    marked.parse(markdown, { async: false, gfm: true }) as string,
-  );
+  if (typeof markdown !== "string" || markdown.length > 32 * 1024 * 1024)
+    throw new RangeError("Markdown input exceeds the 32 MiB limit.");
+  return fromHTML(markdownParser.parse(markdown, { async: false }) as string);
 }
 
 const knownTypes = new Set([
+  "Equation",
   "FlowDocument",
   "Section",
   "Paragraph",
@@ -929,6 +1021,10 @@ const knownTypes = new Set([
   "Floater",
 ]);
 const knownProperties = new Set([
+  "EquationSource",
+  "EquationFormat",
+  "DisplayMode",
+  "BreakColumnBefore",
   "FontFamily",
   "FontSize",
   "FontWeight",
@@ -1038,7 +1134,7 @@ export function fromXAML(xaml: string): FlowDocument {
     const props: Record<string, any> = {};
     for (const [key, value] of Object.entries(node.attrs)) {
       if (!knownProperties.has(key)) continue;
-      if (value.startsWith("{"))
+      if (key !== "EquationSource" && value.startsWith("{"))
         throw new Error("XAML markup extensions are not supported.");
       if (key === "Source" || key === "NavigateUri") {
         const uri = safeURL(value, key === "Source");
@@ -1056,6 +1152,8 @@ export function fromXAML(xaml: string): FlowDocument {
       } else if (
         [
           "BreakPageBefore",
+          "BreakColumnBefore",
+          "DisplayMode",
           "KeepTogether",
           "KeepWithNext",
           "CanDelayPlacement",

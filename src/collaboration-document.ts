@@ -216,6 +216,7 @@ function compatible(
     "Underline",
     "Hyperlink",
     "LineBreak",
+    "Equation",
     "Image",
     "InlineUIContainer",
     "Figure",
@@ -563,6 +564,7 @@ export class CollaborativeDocumentSession {
         ![
           "Run",
           "LineBreak",
+          "Equation",
           "Image",
           "InlineUIContainer",
           "BlockUIContainer",

@@ -8,3 +8,7 @@ export * from "./document-features.js";
 export * from "./toolbar.js";
 export * from "./history.js";
 export * from "./collaboration.js";
+export * from "./equations.js";
+export * from "./equations-omml.js";
+
+export * from "./equation-control.js";

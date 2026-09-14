@@ -1,3 +1,5 @@
+import { EquationEditor } from "./equation-control.js";
+import { equationOptions } from "./equations.js";
 import { RichTextBox } from "./control.js";
 import {
   DocumentFeatures,
@@ -40,9 +42,12 @@ const home: Tool[] = [
   { label: "1. List", command: "ToggleNumbering" },
   { label: "Indent", command: "IncreaseIndentation" },
   { label: "Outdent", command: "DecreaseIndentation" },
+  { label: "Paragraph", command: "Paragraph" },
   { label: "Clear", command: "ClearFormatting" },
 ];
 const insert: Tool[] = [
+  { label: "Equation", command: "Equation" },
+  { label: "Symbol", command: "Symbol" },
   { label: "Table", command: "Table" },
   { label: "Image", command: "Image" },
   { label: "Text box", command: "TextBox" },
@@ -67,6 +72,7 @@ const layout: Tool[] = [
   { label: "Footer", command: "Footer" },
   { label: "Page number", command: "PageNumberFooter" },
   { label: "Page break", command: "PageBreak" },
+  { label: "Column break", command: "ColumnBreak" },
   { label: "Keep together", command: "KeepTogether" },
   { label: "Keep with next", command: "KeepWithNext" },
   { label: "Update fields", command: "UpdateFields" },
@@ -84,7 +90,7 @@ const review: Tool[] = [
   { label: "Bookmark", command: "Bookmark" },
   { label: "Find / replace", command: "FindReplace" },
 ];
-const css = `:host{display:block;font:13px/1.4 var(--rt-ui-font,system-ui);color:var(--rt-toolbar-color,#22324b)}*{box-sizing:border-box}.tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:9px 12px;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#dbe1eb);border-radius:8px}.group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.group+.group{border-left:1px solid var(--rt-toolbar-border,#dbe1eb);padding-left:12px}button,input,select,textarea{font:inherit;color:inherit}button{min-height:32px;border:1px solid transparent;border-radius:5px;background:transparent;padding:5px 9px;cursor:pointer}button:hover{background:var(--rt-toolbar-hover,#edf3fc)}button[aria-pressed=true]{background:#dceaff;color:#084999;border-color:#accafa}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #367adb;outline-offset:2px}select,input,textarea{border:1px solid var(--rt-toolbar-border,#ccd5e1);border-radius:4px;background:var(--rt-toolbar-background,#fff);padding:5px;max-width:100%}select{max-width:150px}input[type=color]{width:34px;height:32px;padding:3px}dialog{border:1px solid #cad3e0;border-radius:12px;padding:22px;width:min(520px,95vw);color:#22324b;box-shadow:0 24px 90px #10203c40}dialog::backdrop{background:#172d4e55}h2{margin:0 0 16px;font-size:19px}label{display:flex;flex-direction:column;gap:5px;margin:12px 0}textarea{min-height:100px;width:100%}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.primary{background:#1254a3;color:white}.revision{border-top:1px solid #dce3ed;padding:10px 0}.revision p{white-space:pre-wrap;overflow-wrap:anywhere}.status{font-size:12px;max-width:360px}.muted{color:#63738a}@media(max-width:600px){.tools{gap:6px;padding:6px}.group+.group{padding-left:0;border-left:0}button{padding:5px 6px}}`;
+const css = `:host{display:block;font:13px/1.4 var(--rt-ui-font,system-ui);color:var(--rt-toolbar-color,#22324b)}*{box-sizing:border-box}.tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:9px 12px;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#dbe1eb);border-radius:8px}.group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.group+.group{border-left:1px solid var(--rt-toolbar-border,#dbe1eb);padding-left:12px}button,input,select,textarea{font:inherit;color:inherit}button{min-height:32px;border:1px solid transparent;border-radius:5px;background:transparent;padding:5px 9px;cursor:pointer}button:hover{background:var(--rt-toolbar-hover,#edf3fc)}button[aria-pressed=true]{background:#dceaff;color:#084999;border-color:#accafa}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #367adb;outline-offset:2px}select,input,textarea{border:1px solid var(--rt-toolbar-border,#ccd5e1);border-radius:4px;background:var(--rt-toolbar-background,#fff);padding:5px;max-width:100%}select{max-width:150px}input[type=color]{width:34px;height:32px;padding:3px}dialog{max-height:90dvh;overflow:auto;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#cad3e0);border-radius:12px;padding:22px;width:min(520px,95vw);color:var(--rt-toolbar-color,#22324b);box-shadow:0 24px 90px #10203c40}dialog::backdrop{background:#172d4e55}h2{margin:0 0 16px;font-size:19px}label{display:flex;flex-direction:column;gap:5px;margin:12px 0}textarea{min-height:100px;width:100%}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.primary{background:#1254a3;color:white}.revision{border-top:1px solid #dce3ed;padding:10px 0}.revision p{white-space:pre-wrap;overflow-wrap:anywhere}.status{font-size:12px;max-width:360px}.muted{color:#63738a}@media(max-width:600px){.tools{gap:6px;padding:6px}.group+.group{padding-left:0;border-left:0}button{padding:5px 6px}}`;
 
 /** Reusable editor chrome. All mutations go through the attached RichTextBox engine. */
 export class RichTextToolbar extends HTMLElementBase {
@@ -143,7 +149,9 @@ export class RichTextToolbar extends HTMLElementBase {
         this.executeSafe(
           object?.type === "Figure" || object?.type === "Floater"
             ? "EditTextBox"
-            : "FloatingLayout",
+            : object?.type === "Equation"
+              ? "Equation"
+              : "FloatingLayout",
         );
       };
       value.addEventListener("objecteditrequest", handler);
@@ -358,6 +366,119 @@ export class RichTextToolbar extends HTMLElementBase {
       case "Cut":
       case "Paste":
         return editor.Execute(command);
+      case "Paragraph": {
+        const paragraph = editor.Selection.Start.Paragraph;
+        const margin = paragraph?.Margin;
+        const m =
+          typeof margin === "number"
+            ? { Left: margin, Right: margin, Top: margin, Bottom: margin }
+            : margin && typeof margin === "object"
+              ? margin
+              : { Left: 0, Right: 0, Top: 0, Bottom: 0 };
+        this.prompt(
+          "Paragraph settings",
+          [
+            {
+              name: "align",
+              label: "Alignment",
+              value: String(paragraph?.TextAlignment || "Left"),
+              options: ["Left", "Center", "Right", "Justify"],
+            },
+            {
+              name: "left",
+              label: "Left indent (px)",
+              value: String(m.Left ?? 0),
+              type: "number",
+            },
+            {
+              name: "right",
+              label: "Right indent (px)",
+              value: String(m.Right ?? 0),
+              type: "number",
+            },
+            {
+              name: "first",
+              label: "First line indent (px; negative for hanging)",
+              value: String(paragraph?.GetValue("TextIndent") ?? 0),
+              type: "number",
+            },
+            {
+              name: "before",
+              label: "Space before (px)",
+              value: String(m.Top ?? 0),
+              type: "number",
+            },
+            {
+              name: "after",
+              label: "Space after (px)",
+              value: String(m.Bottom ?? 0),
+              type: "number",
+            },
+            {
+              name: "line",
+              label: "Line height (px)",
+              value: String(
+                Number(paragraph?.LineHeight) > 4
+                  ? paragraph?.LineHeight
+                  : (paragraph?.FontSize || 16) * 1.5,
+              ),
+              type: "number",
+            },
+            {
+              name: "keep",
+              label: "Keep paragraph together",
+              value: paragraph?.KeepTogether ? "Yes" : "No",
+              options: ["No", "Yes"],
+            },
+            {
+              name: "next",
+              label: "Keep with next paragraph",
+              value: paragraph?.KeepWithNext ? "Yes" : "No",
+              options: ["No", "Yes"],
+            },
+          ],
+          (data) =>
+            mutate(() => {
+              const numeric = [
+                "left",
+                "right",
+                "first",
+                "before",
+                "after",
+                "line",
+              ].map((key) => Number(data[key]));
+              if (
+                numeric.some(
+                  (value) => !Number.isFinite(value) || Math.abs(value) > 20000,
+                ) ||
+                Number(data.line) <= 0
+              )
+                throw new RangeError(
+                  "Paragraph measurements must be finite; line height must be positive.",
+                );
+              engine.Change(() => {
+                engine.SetParagraphProperty("TextAlignment", data.align);
+                engine.SetParagraphProperty("Margin", {
+                  Left: Number(data.left),
+                  Right: Number(data.right),
+                  Top: Number(data.before),
+                  Bottom: Number(data.after),
+                });
+                engine.SetParagraphProperty("TextIndent", Number(data.first));
+                engine.SetParagraphProperty("LineHeight", Number(data.line));
+                engine.SetParagraphProperty(
+                  "KeepTogether",
+                  data.keep === "Yes",
+                );
+                engine.SetParagraphProperty(
+                  "KeepWithNext",
+                  data.next === "Yes",
+                );
+              });
+            }),
+        );
+        break;
+      }
       case "MoveSelection":
         this.prompt(
           "Move selected content",
@@ -557,6 +678,54 @@ export class RichTextToolbar extends HTMLElementBase {
             ),
         );
         break;
+      case "Equation":
+        this.editEquation(editor);
+        break;
+      case "Symbol":
+        this.prompt(
+          "Insert symbol",
+          [
+            {
+              name: "symbol",
+              label: "Symbol or Unicode text",
+              value: "Ω",
+              options: [
+                "Ω",
+                "α",
+                "β",
+                "γ",
+                "δ",
+                "π",
+                "λ",
+                "μ",
+                "σ",
+                "θ",
+                "∞",
+                "±",
+                "×",
+                "÷",
+                "≤",
+                "≥",
+                "≠",
+                "≈",
+                "→",
+                "©",
+                "®",
+                "™",
+                "€",
+                "£",
+                "§",
+                "¶",
+                "†",
+                "‡",
+                "—",
+                "…",
+              ],
+            },
+          ],
+          (data) => mutate(() => engine.InsertText(data.symbol)),
+        );
+        break;
       case "Image":
         this.prompt(
           "Insert image",
@@ -714,7 +883,10 @@ export class RichTextToolbar extends HTMLElementBase {
         );
         break;
       case "PageBreak":
-        mutate(() => engine.SetParagraphProperty("BreakPageBefore", true));
+        mutate(() => engine.InsertPageBreak());
+        break;
+      case "ColumnBreak":
+        mutate(() => engine.InsertColumnBreak());
         break;
       case "KeepTogether":
       case "KeepWithNext":
@@ -885,6 +1057,106 @@ export class RichTextToolbar extends HTMLElementBase {
         this.Refresh();
       }
     };
+    dialog.showModal();
+  }
+  private editEquation(editor: RichTextBox): void {
+    const dialog = this.shadowRoot!.querySelector("dialog")!;
+    dialog.replaceChildren();
+    dialog.style.width = "min(840px,96vw)";
+    const heading = this.ownerDocument.createElement("h2");
+    const object = editor.GetSelectedObject();
+    const equation = object?.type === "Equation" ? object : null;
+    const original = equation && JSON.stringify(equation.props);
+    const originalDocument = editor.Document,
+      originalRevision = editor.Document.Revision;
+    const start = editor.Selection.Start.Offset,
+      end = editor.Selection.End.Offset;
+    heading.textContent = equation ? "Edit equation" : "Insert equation";
+    const workbench = new EquationEditor();
+    workbench.Value = equation
+      ? equationOptions(equation)
+      : {
+          Source: String.raw`x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}`,
+          Format: "latex",
+          DisplayMode: false,
+        };
+    const status = this.ownerDocument.createElement("p");
+    status.setAttribute("role", "alert");
+    const actions = this.ownerDocument.createElement("div");
+    actions.className = "actions";
+    const cancel = this.ownerDocument.createElement("button");
+    cancel.textContent = "Cancel";
+    cancel.onclick = () => dialog.close();
+    const apply = this.ownerDocument.createElement("button");
+    apply.textContent = "Apply";
+    apply.className = "primary";
+    apply.onclick = () => {
+      try {
+        // Flush an in-progress source edit before reading the accepted value.
+        workbench.shadowRoot
+          ?.querySelector("textarea")
+          ?.dispatchEvent(new Event("change"));
+        if (!workbench.Validate()) throw new Error(workbench.Error);
+        if (
+          this.editor !== editor ||
+          editor.IsReadOnly ||
+          editor.Document !== originalDocument
+        )
+          throw new Error("The target document changed or became read-only.");
+        const value = workbench.Value;
+        editor.Engine.BeginChange();
+        try {
+          let id: string;
+          if (equation) {
+            const current = editor.Document.FindById(equation.id);
+            if (!current || JSON.stringify(current.ToJSON().props) !== original)
+              throw new Error(
+                "The equation changed while this dialog was open; reopen the current equation.",
+              );
+            id = equation.id;
+            editor.Engine.UpdateEquation(
+              id,
+              value.Source,
+              value.Format,
+              value.DisplayMode,
+            );
+          } else {
+            if (editor.Document.Revision !== originalRevision)
+              throw new Error(
+                "The document changed while the equation dialog was open; reopen at the intended position.",
+              );
+            editor.Select(start, end);
+            id = editor.Engine.InsertEquation(
+              value.Source,
+              value.Format,
+              value.DisplayMode,
+            );
+          }
+          editor.Engine.SetElementProperty(
+            id,
+            "AlternativeText",
+            value.AlternativeText ?? "",
+          );
+        } finally {
+          editor.Engine.EndChange();
+        }
+        dialog.close();
+        editor.Focus();
+      } catch (error) {
+        status.textContent =
+          error instanceof Error ? error.message : String(error);
+      }
+    };
+    actions.append(cancel, apply);
+    dialog.append(heading, workbench, status, actions);
+    dialog.addEventListener(
+      "close",
+      () => {
+        workbench.Dispose();
+        dialog.style.width = "";
+      },
+      { once: true },
+    );
     dialog.showModal();
   }
   private editFloatingStory(editor: RichTextBox, object: DocumentNode): void {

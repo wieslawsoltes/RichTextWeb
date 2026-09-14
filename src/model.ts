@@ -647,11 +647,11 @@ const defaults: Record<string, any> = {
   Margin: 0,
   Padding: 0,
   LineHeight: 1.5,
-  PageWidth: 816,
-  PageHeight: 1056,
+  PageWidth: 794,
+  PageHeight: 1123,
   PagePadding: 72,
   ColumnCount: 1,
-  ColumnGap: 24,
+  ColumnGap: 32,
   BreakPageBefore: false,
   BreakColumnBefore: false,
   KeepTogether: false,
@@ -2153,6 +2153,70 @@ export class Image extends Inline {
     this.SetValue("Height", value);
   }
 }
+/** A mathematical expression occupies one atomic main-story position. */
+export type EquationInputFormat = "latex" | "mathml";
+export class Equation extends Inline {
+  static readonly SourceProperty = DependencyProperty.Register(
+    "EquationSource",
+    String,
+    Equation,
+    { DefaultValue: "" },
+    (v: string) => typeof v === "string" && v.length <= 262144,
+  );
+  static readonly FormatProperty = DependencyProperty.Register(
+    "EquationFormat",
+    String,
+    Equation,
+    { DefaultValue: "latex" },
+    (v: string) => v === "latex" || v === "mathml",
+  );
+  static readonly DisplayModeProperty = DependencyProperty.Register(
+    "DisplayMode",
+    Boolean,
+    Equation,
+    { DefaultValue: false },
+  );
+  constructor(
+    source = "x",
+    format: EquationInputFormat = "latex",
+    displayMode = false,
+  ) {
+    super("Equation");
+    this.Source = source;
+    this.Format = format;
+    this.DisplayMode = displayMode;
+  }
+  get Source(): string {
+    return this.GetValue("EquationSource") ?? "";
+  }
+  set Source(value: string) {
+    if (typeof value !== "string" || value.length > 262144)
+      throw new RangeError(
+        "Equation source must be a string of at most 256 KiB.",
+      );
+    this.SetValue("EquationSource", value);
+  }
+  get Format(): EquationInputFormat {
+    return this.GetValue("EquationFormat") ?? "latex";
+  }
+  set Format(value: EquationInputFormat) {
+    if (value !== "latex" && value !== "mathml")
+      throw new TypeError("Equation format must be latex or mathml.");
+    this.SetValue("EquationFormat", value);
+  }
+  get DisplayMode(): boolean {
+    return this.GetValue("DisplayMode") ?? false;
+  }
+  set DisplayMode(value: boolean) {
+    this.SetValue("DisplayMode", Boolean(value));
+  }
+  get AlternativeText(): string {
+    return this.GetValue("AlternativeText") ?? "";
+  }
+  set AlternativeText(value: string) {
+    this.SetValue("AlternativeText", String(value).slice(0, 4096));
+  }
+}
 export class InlineUIContainer extends Inline {
   constructor(child?: Image) {
     super("InlineUIContainer");
@@ -3065,13 +3129,13 @@ export class FlowDocument extends TextElement {
     "PageWidth",
     Number,
     FlowDocument,
-    { DefaultValue: 816 },
+    { DefaultValue: 794 },
   );
   static readonly PageHeightProperty = DependencyProperty.Register(
     "PageHeight",
     Number,
     FlowDocument,
-    { DefaultValue: 1056 },
+    { DefaultValue: 1123 },
   );
   static readonly PagePaddingProperty = DependencyProperty.Register<
     number | Thickness | Record<string, number>
@@ -3086,7 +3150,7 @@ export class FlowDocument extends TextElement {
     "ColumnGap",
     Number,
     FlowDocument,
-    { DefaultValue: 24 },
+    { DefaultValue: 32 },
     (value) => Number.isFinite(value) && value >= 0,
   );
   static readonly ColumnWidthProperty = DependencyProperty.Register<
@@ -3149,6 +3213,7 @@ function inlineText(root: TextElement): string {
   if (root instanceof Run) return root.Text;
   if (root instanceof LineBreak) return "\n";
   if (
+    root instanceof Equation ||
     root instanceof Image ||
     root instanceof AnchoredBlock ||
     root instanceof InlineUIContainer ||
@@ -3178,6 +3243,7 @@ function elementOffset(document: FlowDocument, target: TextElement): number {
       if (node instanceof Run || node instanceof LineBreak)
         return offset + inlineText(node).length;
       if (
+        node instanceof Equation ||
         node instanceof Image ||
         node instanceof AnchoredBlock ||
         node instanceof InlineUIContainer ||
@@ -3295,7 +3361,11 @@ export class TextSymbolMap {
     };
     const visit = (element: TextElement, depth: number): void => {
       if (element instanceof TableColumn) return;
-      if (element instanceof Image || element instanceof AnchoredBlock) {
+      if (
+        element instanceof Equation ||
+        element instanceof Image ||
+        element instanceof AnchoredBlock
+      ) {
         const start = symbol;
         add(TextPointerContext.EmbeddedElement, element, 1, 1);
         this.records.set(element.Id, {
@@ -3482,6 +3552,7 @@ export class TextSymbolMap {
     let best = this.records.get(this.Document.Id)!;
     for (const record of this.records.values())
       if (
+        !(record.element instanceof Equation) &&
         !(record.element instanceof Image) &&
         record.depth > best.depth &&
         symbolOffset >= record.bounds.ContentStart &&
@@ -4168,6 +4239,9 @@ export function elementFromJSON(
         break;
       case "BlockUIContainer":
         element = new BlockUIContainer();
+        break;
+      case "Equation":
+        element = new Equation();
         break;
       case "Image":
         element = new Image();

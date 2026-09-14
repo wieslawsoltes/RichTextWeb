@@ -10,6 +10,7 @@ import { runPDFBrowserChecks } from "../tests/pdf.browser.mjs";
 import { runLayoutBrowserChecks } from "../tests/layout.browser.mjs";
 import { runWorkspaceBrowserChecks } from "../tests/workspace.browser.mjs";
 import { runRichCollaborationBrowserChecks } from "../tests/collaboration.browser.mjs";
+import { runAuthoringBrowserChecks } from "../tests/authoring.browser.mjs";
 const port = process.env.PORT || "4190";
 const external = process.env.BROWSER_TEST_URL;
 const base = external || `http://127.0.0.1:${port}`;
@@ -72,6 +73,7 @@ try {
         )),
   );
   results.push(...(await runLayoutBrowserChecks(page)));
+  results.push(...(await runAuthoringBrowserChecks(page)));
   results.push(...(await runWorkspaceBrowserChecks(page)));
   results.push(...(await runRichCollaborationBrowserChecks(page)));
   const reactResults = await runReactBrowserChecks(page);

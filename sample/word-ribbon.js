@@ -276,7 +276,7 @@ export function createDocumentRibbon({
               t("AlignCenter", "Center", "center", { showLabel: false }),
               t("AlignRight", "Align right", "right", { showLabel: false }),
               t("AlignJustify", "Justify", "justify", { showLabel: false }),
-              app("spacing", "Line spacing", "↕"),
+              t("Paragraph", "Paragraph settings", "↕"),
             ],
             { priority: 8 },
           ),
@@ -298,6 +298,7 @@ export function createDocumentRibbon({
         [
           group("insert-pages", "Pages", [
             t("PageBreak", "Page break", "page", large),
+            t("ColumnBreak", "Column break", "list"),
           ]),
           group("insert-tables", "Tables", [
             t("Table", "Table", "table", large),
@@ -321,7 +322,8 @@ export function createDocumentRibbon({
           group("insert-text", "Text", [
             t("Field", "Quick parts / field", "formula"),
             app("date", "Date & time", "clock"),
-            app("symbol", "Symbol", "Ω"),
+            t("Symbol", "Symbol", "Ω"),
+            t("Equation", "Equation", "formula", large),
           ]),
         ],
         "N",
@@ -445,6 +447,9 @@ export function createDocumentRibbon({
               ...large,
               mutates: false,
             }),
+            app("read-mode", "Read mode", "page", { ...large, mutates: false }),
+            app("outline-view", "Outline", "list", { mutates: false }),
+            app("draft-view", "Draft", "page", { mutates: false }),
             t("PagePreview", "Page preview", "print", {
               ...large,
               mutates: false,
@@ -487,7 +492,15 @@ export function createDocumentRibbon({
               { mutates: false },
             ),
           ]),
-          group("display", "Display", [
+          group("page-movement", "Page movement", [
+            app("single-page", "One page", "page", { mutates: false }),
+            app("two-pages", "Two pages", "slides", { mutates: false }),
+            app("vertical-pages", "Vertical", "list", { mutates: false }),
+            app("multiple-pages", "Multiple pages", "grid", { mutates: false }),
+          ]),
+          group("display", "Zoom", [
+            app("fit-width", "Page width", "full", { mutates: false }),
+            app("fit-page", "Whole page", "page", { mutates: false }),
             app("zoom-reset", "100%", "search", { mutates: false }),
             app("theme", "Dark / light", "◐", { mutates: false }),
             b(

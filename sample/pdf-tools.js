@@ -8,7 +8,6 @@ export async function openPDFTools(RT, toast, flowDocument) {
   PDF.configurePDF({
     workerSrc: asset("pdf.worker.mjs"),
     cMapUrl: asset("cmaps/"),
-    standardFontDataUrl: asset("standard_fonts/"),
     wasmUrl: asset("wasm/"),
     iccUrl: asset("iccs/"),
   });

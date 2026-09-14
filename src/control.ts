@@ -1,3 +1,4 @@
+import { EquationEditor } from "./equation-control.js";
 import { FlowDocument, type DocumentNode, type TextPointer } from "./model.js";
 import { RichTextEngine, type TextSelection } from "./engine.js";
 import { fromHTML, toHTML, fromText } from "./formats.js";
@@ -73,7 +74,7 @@ export interface CommandStateChangeDetail {
 const stylesheet = `
 :host{display:block;min-width:0;min-height:160px;--rt-accent:#2463d5;--rt-ink:#182236;--rt-paper:#fff;--rt-workspace:#edf0f5;--rt-border:#d7dce5;color:var(--rt-ink);font-family:Segoe UI,Inter,system-ui,sans-serif;color-scheme:light dark;contain:layout style}
 *{box-sizing:border-box}.viewport{height:100%;min-height:inherit;overflow:auto;background:var(--rt-workspace);padding:28px;scrollbar-gutter:stable;position:relative;overscroll-behavior:contain}.surface{box-sizing:border-box;position:relative;outline:none;margin:0 auto;width:var(--rt-page-width,794px);min-height:var(--rt-page-height,1123px);padding:var(--rt-page-padding,72px);background:var(--rt-paper);color:var(--rt-ink);box-shadow:0 2px 14px #17233a13;border:1px solid var(--rt-border);font:16px/1.5 Georgia,Cambria,serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;caret-color:var(--rt-accent);zoom:var(--rt-zoom,1);tab-size:4}
-.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
+.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface .rt-equation{display:inline-block;max-width:100%;vertical-align:baseline;white-space:normal;overflow:visible;line-height:normal}.surface .rt-equation[data-display=true]{display:block;text-align:center;margin:.6em 0;break-inside:avoid}.rt-equation mjx-container{display:inline-block;line-height:0;direction:ltr;text-indent:0}.rt-equation svg{overflow:visible;max-width:100%;height:auto}.rt-equation[aria-invalid=true]{border:1px solid #c42b1c;padding:.2em}.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
 :host([theme=dark]){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}:host([theme=light]){color-scheme:light}:host([theme=dark]){color-scheme:dark}@media(prefers-color-scheme:dark){:host(:not([theme=light])){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}}@media(max-width:640px){.viewport{padding:12px}.surface{padding:32px;width:max(100%,var(--rt-page-width,794px))}.continuous .surface{width:100%;padding:18px}}@media print{:host{display:block;height:auto!important;contain:none;--rt-paper:white;--rt-ink:black}.viewport{height:auto!important;overflow:visible;padding:0;background:white}.surface,.continuous .surface{width:auto;min-height:0;margin:0;padding:0;border:0;box-shadow:none;zoom:1!important;outline:none!important}.surface td,.surface th{break-inside:avoid}.surface a{color:inherit}}`;
 
 /** A model-backed, framework-independent rich text editing control. */
@@ -95,6 +96,8 @@ export class RichTextBox extends HTMLElementBase {
   protected _viewport: HTMLDivElement | null = null;
   protected _render: RenderResult | null = null;
   private _readOnly = false;
+  private _presentationReadOnly = false;
+  protected _renderDocument: DocumentNode | null = null;
   private _acceptsTab = false;
   private _zoom = 1;
   private _viewMode: RichTextViewMode = "page";
@@ -103,7 +106,7 @@ export class RichTextBox extends HTMLElementBase {
   private _suspendRender = false;
   private _restoringSelection = false;
   private _backwardSelection = false;
-  private _lastDOMHTML = "";
+  protected _lastDOMHTML = "";
   private _subscriptions: Array<{ Dispose(): void }> = [];
   private _connected = false;
   private _disposed = false;
@@ -202,7 +205,7 @@ export class RichTextBox extends HTMLElementBase {
           '[data-rt-type="Figure"],[data-rt-type="Floater"]',
         ) ||
         target.closest<HTMLElement>(
-          '[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
+          '[data-rt-type="Equation"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
         );
       this._selectedObjectId = object?.dataset.rtId || null;
       this.emit("objectselectionchange", { elementId: this._selectedObjectId });
@@ -376,6 +379,7 @@ export class RichTextBox extends HTMLElementBase {
         [
           "Figure",
           "Floater",
+          "Equation",
           "Image",
           "InlineUIContainer",
           "BlockUIContainer",
@@ -448,11 +452,16 @@ export class RichTextBox extends HTMLElementBase {
     this.Select(value.Offset, value.Offset);
   }
   get IsReadOnly(): boolean {
-    return this._readOnly;
+    return this._readOnly || this._presentationReadOnly;
   }
   set IsReadOnly(value: boolean) {
     this._readOnly = Boolean(value);
     this.reflectBoolean("readonly", this._readOnly);
+    this.updateAttributes();
+    this.emitCommandState();
+  }
+  protected setPresentationReadOnly(value: boolean): void {
+    this._presentationReadOnly = value;
     this.updateAttributes();
     this.emitCommandState();
   }
@@ -762,6 +771,7 @@ export class RichTextBox extends HTMLElementBase {
         this.Document,
         this._virtualWindow || undefined,
       );
+      this._renderDocument = json;
       this._render = reconcileDocumentDOM(
         this._editor,
         renderDocument(
@@ -991,7 +1001,7 @@ export class RichTextBox extends HTMLElementBase {
     return null;
   }
 
-  private offsetFromDOM(node: Node, offset: number): number {
+  protected offsetFromDOM(node: Node, offset: number): number {
     if (!this._render || !this._editor) return 0;
     const positions = this._render.positions;
     const own = positions.get(node);
@@ -1065,7 +1075,7 @@ export class RichTextBox extends HTMLElementBase {
     return { node: this._editor, offset: 0 };
   }
 
-  private restoreSelection(): void {
+  protected restoreSelection(): void {
     if (
       !this._editor ||
       this._composing ||
@@ -1511,6 +1521,9 @@ export class RichTextBox extends HTMLElementBase {
   private preserveNativeAtoms(
     container: HTMLElement,
   ): Map<string, DocumentNode> {
+    container
+      .querySelectorAll("[data-rt-pagination-spacer]")
+      .forEach((node) => node.remove());
     const originals = new Map<string, DocumentNode>();
     const walk = (node: DocumentNode): void => {
       originals.set(node.id, node);
@@ -1520,7 +1533,7 @@ export class RichTextBox extends HTMLElementBase {
     const preserved = new Map<string, DocumentNode>();
     for (const element of Array.from(
       container.querySelectorAll<HTMLElement>(
-        '[data-rt-type="Figure"],[data-rt-type="Floater"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
+        '[data-rt-type="Equation"],[data-rt-type="Figure"],[data-rt-type="Floater"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
       ),
     )) {
       if (!container.contains(element)) continue;
@@ -1557,7 +1570,48 @@ export class FlowDocumentScrollViewer extends FlowDocumentReader {
     super("continuous");
   }
 }
+export type DocumentViewMode =
+  "PrintLayout" | "WebLayout" | "ReadMode" | "Outline" | "Draft";
+export type PageArrangement =
+  "SinglePage" | "TwoPages" | "Vertical" | "MultiplePages";
+export type DocumentZoomMode =
+  "Custom" | "PageWidth" | "WholePage" | "TwoPages";
+export interface PaginationStatistics {
+  LayoutPasses: number;
+  CacheHits: number;
+  LastDurationMs: number;
+  Revision: number;
+  RealizedPagePreviews: number;
+  TotalPages: number;
+}
+
 export class FlowDocumentPageViewer extends FlowDocumentReader {
+  static override get observedAttributes(): string[] {
+    return [
+      ...super.observedAttributes,
+      "document-view",
+      "page-arrangement",
+      "zoom-mode",
+    ];
+  }
+  private _documentView: DocumentViewMode = "PrintLayout";
+  private _arrangement: PageArrangement = "SinglePage";
+  private _zoomMode: DocumentZoomMode = "Custom";
+  private _layoutEpoch = 0;
+  private _measuredEpoch = -1;
+  private _layoutPasses = 0;
+  private _cacheHits = 0;
+  private _lastLayoutDuration = 0;
+  private _configuredRevision = -1;
+  private _configuredDocument: FlowDocument | null = null;
+  private _grid: HTMLDivElement | null = null;
+  private _gridKey = "";
+  private _pageSlots = new Map<number, HTMLDivElement>();
+  private _previews = new Map<number, HTMLDivElement>();
+  private _previewFrame = 0;
+  private _fittingZoom = false;
+  private _outlineLevel = 9;
+  private _fontListener = () => this.InvalidatePagination();
   private _pageNumber = 1;
   private _layout: PageLayoutResult | null = null;
   private _settings: PageSettings = pageSettings({});
@@ -1580,7 +1634,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     if (!this._editor || !this._viewport || !this.shadowRoot) return;
     const owner = this.ownerDocument;
     const style = owner.createElement("style");
-    style.textContent = `.rt-page-sheet{position:relative;flex:none;box-sizing:border-box;margin:0 auto;background:var(--rt-paper);color:var(--rt-ink);border:1px solid var(--rt-border);box-shadow:0 2px 14px #17233a13;overflow:hidden}.rt-page-window{position:relative;overflow:hidden}.surface.rt-page-flow{box-sizing:content-box!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:visible!important;column-fill:auto;widows:2;orphans:2;outline:none!important}.surface.rt-page-flow p{widows:2;orphans:2}.surface.rt-page-flow tr{break-inside:avoid-column}.rt-page-nav{display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;background:var(--rt-workspace);border-bottom:1px solid var(--rt-border);font:13px Segoe UI,system-ui,sans-serif}.rt-page-nav button{font:inherit;padding:5px 12px;border:1px solid var(--rt-border);border-radius:5px;background:var(--rt-paper);color:var(--rt-ink);cursor:pointer}.rt-page-nav button:disabled{opacity:.45;cursor:default}.rt-page-nav button:focus-visible{outline:2px solid var(--rt-accent)}.rt-page-story.surface{position:absolute;box-sizing:border-box;min-height:0!important;max-height:none;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:hidden;font-size:12px;line-height:1.4}.rt-page-story p{margin:0 0 .35em;min-height:0}.rt-page-notes{border-top:1px solid var(--rt-border)!important;padding-top:6px!important}.rt-page-story a{cursor:pointer}@media print{.rt-page-nav{display:none}.rt-page-sheet{width:auto!important;height:auto!important;overflow:visible;zoom:1!important;border:0;box-shadow:none}.rt-page-window{width:auto!important;height:auto!important;overflow:visible}.surface.rt-page-flow{height:auto!important;width:auto!important;column-width:auto!important;columns:auto!important;transform:none!important}.rt-page-story{display:none!important}}`;
+    style.textContent = `:host{display:flex;flex-direction:column;overflow:hidden}.viewport{flex:1;min-height:0;height:auto}.rt-page-sheet{position:relative;flex:none;box-sizing:border-box;margin:0 auto;background:var(--rt-paper);color:var(--rt-ink);border:0;outline:1px solid var(--rt-border);box-shadow:0 2px 14px #17233a13;overflow:hidden}.rt-page-window{position:relative;overflow:hidden}.surface.rt-page-flow{box-sizing:content-box!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:visible!important;column-fill:auto;widows:2;orphans:2;outline:none!important}.surface.rt-page-flow p{widows:2;orphans:2}.surface.rt-page-flow tr{break-inside:avoid-column}.rt-page-nav{display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;background:var(--rt-workspace);border-bottom:1px solid var(--rt-border);font:13px Segoe UI,system-ui,sans-serif}.rt-page-nav button{font:inherit;padding:5px 12px;border:1px solid var(--rt-border);border-radius:5px;background:var(--rt-paper);color:var(--rt-ink);cursor:pointer}.rt-page-nav button:disabled{opacity:.45;cursor:default}.rt-page-nav button:focus-visible{outline:2px solid var(--rt-accent)}.rt-page-story.surface{position:absolute;box-sizing:border-box;min-height:0!important;max-height:none;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:hidden;font-size:12px;line-height:1.4}.rt-page-story p{margin:0 0 .35em;min-height:0}.rt-page-notes{border-top:1px solid var(--rt-border)!important;padding-top:6px!important}.rt-page-story a{cursor:pointer}@media print{.rt-page-nav{display:none}.rt-page-sheet{width:auto!important;height:auto!important;overflow:visible;zoom:1!important;border:0;box-shadow:none}.rt-page-window{width:auto!important;height:auto!important;overflow:visible}.surface.rt-page-flow{height:auto!important;width:auto!important;column-width:auto!important;columns:auto!important;transform:none!important}.rt-page-story{display:none!important}}`;
     this.shadowRoot.append(style);
     const nav = owner.createElement("div");
     nav.className = "rt-page-nav";
@@ -1623,8 +1677,29 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       this._footer,
     );
     this._viewport.append(this._sheet);
-    this._editor.addEventListener("load", () => this.queuePagination(), true);
+    const viewsStyle = owner.createElement("style");
+    viewsStyle.textContent = `.rt-page-grid{display:grid;gap:24px;justify-content:center;align-items:start;min-width:100%;width:max-content}.rt-page-slot{position:relative;flex:none;outline:1px dashed var(--rt-border);background:color-mix(in srgb,var(--rt-paper) 50%,transparent)}.rt-page-slot>.rt-page-sheet{margin:0}.rt-page-slot-label{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:11px/18px system-ui;color:var(--rt-ink);opacity:.65;pointer-events:none}.rt-page-preview{cursor:text}.rt-page-preview *{pointer-events:none!important;user-select:none!important}.rt-page-preview:focus-visible{outline:2px solid var(--rt-accent)}:host([document-view=ReadMode]) .viewport{padding:32px;background:color-mix(in srgb,var(--rt-workspace) 60%,var(--rt-paper))}:host([document-view=Draft]) .surface{font-family:ui-monospace,monospace!important;line-height:1.7!important;max-width:none;box-shadow:none}:host([document-view=Draft]) .surface p{border-bottom:1px dotted var(--rt-border)}:host([document-view=Outline]) .surface{font-family:system-ui!important;max-width:100%;padding:22px}:host([document-view=Outline]) [data-rt-paragraph]{padding-inline-start:18px;position:relative}:host([document-view=Outline]) [data-rt-paragraph]::before{content:"·";position:absolute;inset-inline-start:0;color:var(--rt-accent)}:host([document-view=Outline]) [data-outline-heading]::before{content:"+";font-weight:bold}:host([document-view=Outline]) [data-outline-hidden]{display:none!important}.rt-page-flow [data-rt-pagination-spacer]{margin:0!important;padding:0!important;border:0!important;pointer-events:none!important;font-size:0!important;line-height:0!important;visibility:hidden;user-select:none}`;
+    this.shadowRoot.append(viewsStyle);
+    this._viewport.addEventListener("scroll", () => this.queuePagePreviews(), {
+      passive: true,
+    });
+    this._editor.addEventListener(
+      "load",
+      () => this.InvalidatePagination(),
+      true,
+    );
     this._editor.addEventListener("keydown", (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "Enter" &&
+        !this.IsReadOnly
+      ) {
+        event.preventDefault();
+        event.shiftKey
+          ? this.Engine.InsertColumnBreak()
+          : this.Engine.InsertPageBreak();
+        return;
+      }
       if (event.key === "PageDown" || event.key === "PageUp") {
         event.preventDefault();
         event.key === "PageDown" ? this.NextPage() : this.PreviousPage();
@@ -1634,20 +1709,191 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   override connectedCallback(): void {
     super.connectedCallback();
     if (typeof ResizeObserver !== "undefined" && !this._resizeObserver) {
-      this._resizeObserver = new ResizeObserver(() => this.queuePagination());
+      this._resizeObserver = new ResizeObserver(() => {
+        this.applyZoomMode();
+        this.updatePageArrangement();
+        this.queuePagination();
+      });
       this._resizeObserver.observe(this);
     }
+    this.ownerDocument.fonts?.addEventListener(
+      "loadingdone",
+      this._fontListener,
+    );
     this.queuePagination();
   }
   override disconnectedCallback(): void {
+    this.ownerDocument?.fonts?.removeEventListener(
+      "loadingdone",
+      this._fontListener,
+    );
+    if (this._previewFrame)
+      this.ownerDocument.defaultView?.cancelAnimationFrame(this._previewFrame);
+    this._previewFrame = 0;
     this._resizeObserver?.disconnect();
     this._resizeObserver = null;
     super.disconnectedCallback();
   }
   override Refresh(): void {
+    this._editor
+      ?.querySelectorAll("[data-rt-pagination-spacer]")
+      .forEach((node) => node.remove());
     super.Refresh();
+    this._configuredRevision = -1;
+    this._layoutEpoch = (this._layoutEpoch || 0) + 1;
+    this._previews?.clear();
+    this._pageSlots?.forEach((slot) =>
+      slot.querySelector(".rt-page-preview")?.remove(),
+    );
     this.configurePagination();
+    this.configureOutline();
+    if (this._editor) this._lastDOMHTML = this._editor.innerHTML;
     this.queuePagination();
+  }
+  /** Invalidate font/image geometry without rebuilding the model or edit history. */
+  InvalidatePagination(): void {
+    this._layoutEpoch++;
+    this._previews.clear();
+    this._pageSlots.forEach((slot) =>
+      slot.querySelector(".rt-page-preview")?.remove(),
+    );
+    this.queuePagination();
+  }
+  get PaginationStatistics(): PaginationStatistics {
+    return {
+      LayoutPasses: this._layoutPasses,
+      CacheHits: this._cacheHits,
+      LastDurationMs: this._lastLayoutDuration,
+      Revision: this._layout?.Revision ?? -1,
+      RealizedPagePreviews: this._previews.size,
+      TotalPages: this.PageCount,
+    };
+  }
+  get DocumentView(): DocumentViewMode {
+    return this._documentView;
+  }
+  set DocumentView(value: DocumentViewMode) {
+    if (
+      !["PrintLayout", "WebLayout", "ReadMode", "Outline", "Draft"].includes(
+        value,
+      )
+    )
+      throw new TypeError("Unknown document view mode.");
+    const changed = value !== this._documentView;
+    this._documentView = value;
+    this.setPresentationReadOnly(value === "ReadMode");
+    if (this.getAttribute("document-view") !== value)
+      this.setAttribute("document-view", value);
+    const mode =
+      value === "PrintLayout" || value === "ReadMode" ? "page" : "continuous";
+    if (this.ViewMode !== mode) this.ViewMode = mode;
+    else if (changed) {
+      this.configureOutline();
+      this.configurePagination();
+    }
+    this.emit("viewchange", {
+      documentView: value,
+      pageArrangement: this.PageArrangement,
+      zoomMode: this.ZoomMode,
+    });
+  }
+  get PageArrangement(): PageArrangement {
+    return this._arrangement;
+  }
+  set PageArrangement(value: PageArrangement) {
+    if (
+      !["SinglePage", "TwoPages", "Vertical", "MultiplePages"].includes(value)
+    )
+      throw new TypeError("Unknown page arrangement.");
+    this._arrangement = value;
+    if (this.getAttribute("page-arrangement") !== value)
+      this.setAttribute("page-arrangement", value);
+    this.updatePageArrangement();
+    this.emit("viewchange", {
+      documentView: this.DocumentView,
+      pageArrangement: value,
+      zoomMode: this.ZoomMode,
+    });
+  }
+  get ZoomMode(): DocumentZoomMode {
+    return this._zoomMode;
+  }
+  set ZoomMode(value: DocumentZoomMode) {
+    if (!["Custom", "PageWidth", "WholePage", "TwoPages"].includes(value))
+      throw new TypeError("Unknown zoom mode.");
+    this._zoomMode = value;
+    if (this.getAttribute("zoom-mode") !== value)
+      this.setAttribute("zoom-mode", value);
+    this.applyZoomMode();
+  }
+  get OutlineLevel(): number {
+    return this._outlineLevel;
+  }
+  set OutlineLevel(value: number) {
+    if (!Number.isInteger(value) || value < 1 || value > 9)
+      throw new RangeError(
+        "OutlineLevel must be between 1 and 9; 9 includes body text.",
+      );
+    this._outlineLevel = value;
+    this.configureOutline();
+  }
+  private configureOutline(): void {
+    if (!this._editor) return;
+    this._editor
+      .querySelectorAll<HTMLElement>("[data-rt-paragraph]")
+      .forEach((element) => {
+        const level =
+          Number(
+            element.dataset.rtHeading ||
+              element.tagName.match(/^H([1-6])$/)?.[1],
+          ) || 9;
+        element.toggleAttribute("data-outline-heading", level < 9);
+        element.toggleAttribute(
+          "data-outline-hidden",
+          this.DocumentView === "Outline" && level > this._outlineLevel,
+        );
+      });
+  }
+  private applyZoomMode(): void {
+    if (
+      !this._viewport ||
+      !this._sheet ||
+      this.ViewMode !== "page" ||
+      this._fittingZoom ||
+      this.ZoomMode === "Custom"
+    )
+      return;
+    const style = this.ownerDocument.defaultView!.getComputedStyle(
+      this._viewport,
+    );
+    const width =
+      this._viewport.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    const height =
+      this._viewport.clientHeight -
+      parseFloat(style.paddingTop) -
+      parseFloat(style.paddingBottom);
+    if (width < 1 || height < 1) return;
+    const zoom =
+      this.ZoomMode === "TwoPages"
+        ? Math.min(
+            (width - 24) / (2 * this._settings.PageWidth),
+            height / this._settings.PageHeight,
+          )
+        : this.ZoomMode === "WholePage"
+          ? Math.min(
+              width / this._settings.PageWidth,
+              height / this._settings.PageHeight,
+            )
+          : width / this._settings.PageWidth;
+    this._fittingZoom = true;
+    try {
+      if (Math.abs(this.Zoom - Math.max(0.25, Math.min(4, zoom))) > 0.001)
+        this.Zoom = zoom;
+    } finally {
+      this._fittingZoom = false;
+    }
   }
   override attributeChangedCallback(
     name: string,
@@ -1655,8 +1901,36 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     value: string | null,
   ): void {
     super.attributeChangedCallback(name, oldValue, value);
-    if (name === "zoom") this.configurePagination();
-    if (name === "view-mode" && this.isConnected) this.Refresh();
+    if (oldValue === value) return;
+    if (name === "document-view" && value && value !== this.DocumentView)
+      this.DocumentView = value as DocumentViewMode;
+    if (name === "page-arrangement" && value && value !== this.PageArrangement)
+      this.PageArrangement = value as PageArrangement;
+    if (name === "zoom-mode" && value && value !== this.ZoomMode)
+      this.ZoomMode = value as DocumentZoomMode;
+    if (name === "zoom") {
+      if (!this._fittingZoom) {
+        this._zoomMode = "Custom";
+        if (this.getAttribute("zoom-mode") !== "Custom")
+          this.setAttribute("zoom-mode", "Custom");
+      }
+      if (this._sheet) this._sheet.style.zoom = String(this.Zoom);
+      this._gridKey = "";
+      this.updatePageArrangement();
+    }
+    if (name === "view-mode" && this.isConnected) {
+      if (
+        value === "continuous" &&
+        ["PrintLayout", "ReadMode"].includes(this.DocumentView)
+      )
+        this.DocumentView = "WebLayout";
+      if (
+        value === "page" &&
+        !["PrintLayout", "ReadMode"].includes(this.DocumentView)
+      )
+        this.DocumentView = "PrintLayout";
+      this.Refresh();
+    }
   }
   get PageCount(): number {
     return this._layout?.PageCount || 1;
@@ -1696,6 +1970,18 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     const changed = number !== this._pageNumber;
     this._pageNumber = number;
     this.updatePageView();
+    if (changed && this._viewport && this._grid) {
+      const slot = this._pageSlots.get(number);
+      if (slot) {
+        const top = slot.offsetTop - this._grid.offsetTop;
+        if (
+          top < this._viewport.scrollTop ||
+          top + Math.min(slot.offsetHeight, this._viewport.clientHeight) >
+            this._viewport.scrollTop + this._viewport.clientHeight
+        )
+          this._viewport.scrollTop = top;
+      }
+    }
     if (changed)
       this.emit("pagechange", {
         pageNumber: number,
@@ -1706,6 +1992,15 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   }
   override Execute(command: string, parameter?: any): unknown {
     switch (command.replace(/[\s_-]/g, "").toLowerCase()) {
+      case "documentview":
+      case "viewmode":
+        return (this.DocumentView = parameter);
+      case "pagearrangement":
+        return (this.PageArrangement = parameter);
+      case "zoommode":
+        return (this.ZoomMode = parameter);
+      case "outlinelevel":
+        return (this.OutlineLevel = Number(parameter));
       case "nextpage":
         return this.NextPage();
       case "previouspage":
@@ -1720,13 +2015,21 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
         return super.Execute(command, parameter);
     }
   }
-  /** Wait for font layout and measure real column fragments in the screen viewer. */
+  /** Measure only after document/geometry changes; caret, page and zoom navigation reuse the layout. */
   Repaginate(): Promise<PageLayoutResult> {
     if (this.ViewMode === "continuous")
       return Promise.reject(
         new Error("Screen pagination requires page view mode."),
       );
     if (this._layoutPending) return this._layoutPending;
+    if (
+      this._layout &&
+      this._measuredEpoch === this._layoutEpoch &&
+      this._layout.Revision === this.Document.Revision
+    ) {
+      this._cacheHits++;
+      return Promise.resolve(this._layout);
+    }
     if (
       !this.isConnected ||
       !this._editor ||
@@ -1742,44 +2045,85 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
         this.ownerDocument.defaultView!.requestAnimationFrame(() => resolve()),
       );
       if (this._pageDisposed) throw new Error("Page viewer is disposed.");
+      if (this.ViewMode !== "page")
+        throw new Error("Screen pagination requires page view mode.");
       this.configurePagination();
       if (!this.isConnected || this._editor!.getBoundingClientRect().width < 1)
         throw new Error("Screen pagination requires a visible layout surface.");
+      const started = performance.now(),
+        epoch = this._layoutEpoch;
+      this.alignPhysicalPageBreaks();
       this._layout = measurePageLayout(
         this._editor!,
         this._render!,
-        this.Document.ToJSON(),
+        this._paginationDocument!,
         this.Document.Revision,
         this._settings,
       );
       this._pageNumber = Math.min(this._pageNumber, this._layout.PageCount);
       this.indexPageNotes();
-      const currentPage = this._pageNumber;
-      const props = this._paginationDocument?.props || {};
-      if (
-        [
-          "Headers",
-          "Footers",
-          "FirstPageHeader",
-          "FirstPageFooter",
-          "EvenPageHeader",
-          "EvenPageFooter",
-          "Footnotes",
-        ].some((name) => Array.isArray(props[name]) && props[name].length)
-      ) {
-        for (let page = 1; page <= this.PageCount; page++) {
-          this._pageNumber = page;
-          this.renderStories();
-        }
-      }
-      this._pageNumber = currentPage;
+      this._measuredEpoch = epoch;
+      this._layoutPasses++;
       this.updatePageView();
+      this.applyZoomMode();
+      this.updatePageArrangement();
+      this._lastLayoutDuration = performance.now() - started;
       this.emit("paginated", { layout: this._layout });
       return this._layout;
     })().finally(() => {
       this._layoutPending = null;
     });
     return this._layoutPending;
+  }
+  private alignPhysicalPageBreaks(): void {
+    if (!this._editor || !this._paginationDocument) return;
+    this._editor
+      .querySelectorAll("[data-rt-pagination-spacer]")
+      .forEach((node) => node.remove());
+    const s = this._settings;
+    if (s.ColumnCount > 1) {
+      const pageBreaks: DocumentNode[] = [];
+      const walk = (node: DocumentNode) => {
+        if (node.props.BreakPageBefore) pageBreaks.push(node);
+        node.children?.forEach(walk);
+      };
+      walk(this._paginationDocument);
+      for (const node of pageBreaks) {
+        const element = this._elementsById.get(node.id);
+        if (
+          !element ||
+          !element.parentElement ||
+          !element.getClientRects().length
+        )
+          continue;
+        const bounds = this._editor.getBoundingClientRect(),
+          scale = bounds.width / s.ContentWidth || 1;
+        const rtl =
+          this.ownerDocument.defaultView!.getComputedStyle(this._editor)
+            .direction === "rtl";
+        const rect = element.getClientRects()[0];
+        const offset = rtl
+          ? bounds.right - rect.right
+          : rect.left - bounds.left;
+        const column = Math.max(
+          0,
+          Math.floor(
+            (offset / scale + 0.5) / (s.TextColumnWidth + s.ColumnGap),
+          ),
+        );
+        const missing =
+          (s.ColumnCount - (column % s.ColumnCount)) % s.ColumnCount;
+        for (let index = 0; index < missing; index++) {
+          const spacer = this.ownerDocument.createElement("div");
+          spacer.dataset.rtPaginationSpacer = "";
+          spacer.contentEditable = "false";
+          spacer.setAttribute("aria-hidden", "true");
+          spacer.style.cssText = `height:${s.ContentHeight}px;break-before:column;break-after:column;break-inside:avoid-column;`;
+          element.parentElement.insertBefore(spacer, element);
+        }
+      }
+    }
+    this._lastDOMHTML = this._editor.innerHTML;
   }
   override Dispose(): void {
     this._pageDisposed = true;
@@ -1804,6 +2148,26 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       this._sheet.style.display = "contents";
       this._pageWindow.style.display = "contents";
       this._editor.classList.remove("rt-page-flow");
+      for (const property of [
+        "height",
+        "width",
+        "column-width",
+        "column-count",
+        "column-gap",
+        "column-fill",
+        "transform",
+      ])
+        this._editor.style.removeProperty(property);
+      this._editor
+        .querySelectorAll("[data-rt-pagination-spacer]")
+        .forEach((node) => node.remove());
+      this._sheet.style.zoom = "1";
+      this.moveLiveSheet(this._viewport!);
+      this._grid?.remove();
+      this._grid = null;
+      this._gridKey = "";
+      this._pageSlots.clear();
+      this._previews.clear();
       this._viewport?.classList.add("continuous");
       for (const element of [
         this._header,
@@ -1818,9 +2182,18 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     this._pageWindow.style.display = "";
     const nav = this.shadowRoot?.querySelector<HTMLElement>(".rt-page-nav");
     if (nav) nav.style.display = "flex";
-    const json = this.Document.ToJSON();
-    applyEffectiveStyleValues(json, this.Document, undefined, false);
+    const unchanged =
+      this._configuredDocument === this.Document &&
+      this._configuredRevision === this.Document.Revision;
+    const json =
+      unchanged && this._paginationDocument
+        ? this._paginationDocument
+        : (this._renderDocument ?? this.Document.ToJSON());
+    if (!unchanged)
+      applyEffectiveStyleValues(json, this.Document, undefined, false);
     this._paginationDocument = json;
+    this._configuredDocument = this.Document;
+    this._configuredRevision = this.Document.Revision;
     this._settings = pageSettings(json.props || {});
     const s = this._settings,
       paper = this._sheet.style,
@@ -1839,6 +2212,10 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     flow.columnGap = `${s.ColumnGap}px`;
     flow.columnCount = String(s.ColumnCount);
     flow.columnFill = "auto";
+    if (unchanged && this._elementsById.size) {
+      this.updatePageView();
+      return;
+    }
     const model = new Map<string, DocumentNode>();
     const visit = (node: DocumentNode) => {
       model.set(node.id, node);
@@ -1851,7 +2228,11 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       .forEach((element) => {
         this._elementsById.set(element.dataset.rtId!, element);
         const props = model.get(element.dataset.rtId!)?.props || {};
-        if (props.BreakPageBefore || element.style.breakBefore === "page")
+        if (
+          props.BreakPageBefore ||
+          props.BreakColumnBefore ||
+          element.style.breakBefore === "page"
+        )
           element.style.breakBefore = "column";
         if (props.KeepTogether || element.style.breakInside === "avoid")
           element.style.breakInside = "avoid-column";
@@ -1878,7 +2259,327 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       this._previousButton.disabled = !this.CanGoToPreviousPage;
     if (this._nextButton) this._nextButton.disabled = !this.CanGoToNextPage;
     this.renderStories();
+    this.updatePageArrangement();
     this._objectAdorner?.Refresh();
+  }
+  private moveLiveSheet(parent: HTMLElement): void {
+    if (!this._sheet || this._sheet.parentElement === parent) return;
+    const focused = this.shadowRoot?.activeElement === this._editor;
+    if (
+      this._sheet.isConnected &&
+      parent.isConnected &&
+      typeof (parent as any).moveBefore === "function"
+    )
+      (parent as any).moveBefore(this._sheet, null);
+    else parent.append(this._sheet);
+    if (focused && this._editor) {
+      this._editor.focus({ preventScroll: true });
+      this.restoreSelection();
+    }
+  }
+  private arrangementColumns(): number {
+    if (this.PageArrangement === "TwoPages") return 2;
+    if (this.PageArrangement !== "MultiplePages" || !this._viewport) return 1;
+    return Math.max(
+      1,
+      Math.min(
+        4,
+        Math.floor(
+          (this._viewport.clientWidth - 32) /
+            (this._settings.PageWidth * this.Zoom + 24),
+        ),
+      ),
+    );
+  }
+  private updatePageArrangement(): void {
+    if (!this._viewport || !this._sheet || this.ViewMode !== "page") return;
+    if (this.PageArrangement === "SinglePage") {
+      this.moveLiveSheet(this._viewport);
+      this._grid?.remove();
+      this._grid = null;
+      this._gridKey = "";
+      this._pageSlots.clear();
+      this._previews.clear();
+      return;
+    }
+    const cols = this.arrangementColumns(),
+      start =
+        this.PageArrangement === "TwoPages"
+          ? Math.floor((this.PageNumber - 1) / 2) * 2 + 1
+          : 1;
+    const end =
+      this.PageArrangement === "TwoPages"
+        ? Math.min(this.PageCount, start + 1)
+        : this.PageCount;
+    const width = this._settings.PageWidth * this.Zoom,
+      height = this._settings.PageHeight * this.Zoom;
+    const key = `${this.PageArrangement}:${start}:${end}:${width}:${height}:${cols}`;
+    if (this._gridKey !== key) {
+      // Move the live selection-bearing DOM before removing obsolete preview containers.
+      this.moveLiveSheet(this._viewport);
+      this._grid?.remove();
+      this._grid = this.ownerDocument.createElement("div");
+      this._grid.className = "rt-page-grid";
+      this._grid.setAttribute("part", "pages");
+      this._grid.style.gridTemplateColumns = `repeat(${Math.min(cols, end - start + 1)},${width}px)`;
+      this._viewport.append(this._grid);
+      this._pageSlots.clear();
+      this._previews.clear();
+      const fragment = this.ownerDocument.createDocumentFragment();
+      for (let number = start; number <= end; number++) {
+        const slot = this.ownerDocument.createElement("div");
+        slot.className = "rt-page-slot";
+        slot.dataset.page = String(number);
+        slot.style.width = `${width}px`;
+        slot.style.height = `${height}px`;
+        const label = this.ownerDocument.createElement("div");
+        label.className = "rt-page-slot-label";
+        label.textContent = `Page ${number}`;
+        slot.append(label);
+        this._pageSlots.set(number, slot);
+        fragment.append(slot);
+      }
+      this._grid.append(fragment);
+      this._gridKey = key;
+    }
+    const slot = this._pageSlots.get(this.PageNumber);
+    if (slot) {
+      slot.querySelector(".rt-page-preview")?.remove();
+      this._previews.delete(this.PageNumber);
+      this.moveLiveSheet(slot);
+    }
+    this.queuePagePreviews();
+  }
+  private queuePagePreviews(): void {
+    if (
+      this._previewFrame ||
+      !this._grid ||
+      !this.isConnected ||
+      this.ViewMode !== "page" ||
+      this._pageDisposed
+    )
+      return;
+    this._previewFrame = this.ownerDocument.defaultView!.requestAnimationFrame(
+      () => {
+        this._previewFrame = 0;
+        if (
+          !this.isConnected ||
+          !this._grid ||
+          !this._layout ||
+          this._measuredEpoch !== this._layoutEpoch
+        )
+          return;
+        this.renderVisiblePagePreviews();
+      },
+    );
+  }
+  private renderVisiblePagePreviews(): void {
+    if (!this._viewport || !this._grid) return;
+    const wanted: number[] = [];
+    if (this.PageArrangement === "TwoPages")
+      wanted.push(...this._pageSlots.keys());
+    else {
+      const columns = this.arrangementColumns(),
+        stride = this._settings.PageHeight * this.Zoom + 24;
+      const top = Math.max(0, this._viewport.scrollTop - this._grid.offsetTop);
+      const first = Math.max(0, Math.floor(top / stride) - 1) * columns + 1;
+      const last = Math.min(
+        this.PageCount,
+        (Math.ceil((top + this._viewport.clientHeight) / stride) + 1) * columns,
+      );
+      for (let page = first; page <= last && wanted.length < 8; page++)
+        wanted.push(page);
+    }
+    for (const [page, preview] of this._previews)
+      if (!wanted.includes(page) || page === this.PageNumber) {
+        preview.remove();
+        this._previews.delete(page);
+      }
+    for (const page of wanted) {
+      if (page === this.PageNumber || this._previews.has(page)) continue;
+      const slot = this._pageSlots.get(page);
+      if (!slot) continue;
+      const preview = this.snapshotPage(page);
+      preview.classList.add("rt-page-preview");
+      preview.setAttribute("role", "button");
+      preview.tabIndex = 0;
+      preview.setAttribute(
+        "aria-label",
+        `Activate page ${page} of ${this.PageCount}`,
+      );
+      for (const child of Array.from(preview.children))
+        child.setAttribute("aria-hidden", "true");
+      preview.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        const anchor = this.Selection.Start.Offset;
+        this.GoToPage(page);
+        const nativeDocument = this.ownerDocument as any;
+        const point = nativeDocument.caretPositionFromPoint?.(
+          event.clientX,
+          event.clientY,
+          { shadowRoots: [this.shadowRoot] },
+        );
+        const range =
+          !point &&
+          nativeDocument.caretRangeFromPoint?.(event.clientX, event.clientY);
+        const node = point?.offsetNode ?? range?.startContainer,
+          offset = point?.offset ?? range?.startOffset;
+        if (node && this._editor?.contains(node)) {
+          const at = this.offsetFromDOM(node, offset);
+          this.Select(event.shiftKey ? anchor : at, at);
+        }
+        this.Focus();
+      });
+      preview.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          this.GoToPage(page);
+          this.Focus();
+        }
+      });
+      slot.prepend(preview);
+      this._previews.set(page, preview);
+    }
+  }
+  private snapshotPage(number: number): HTMLDivElement {
+    if (!this._sheet || !this._editor)
+      throw new Error("The page surface is unavailable.");
+    const current = this._pageNumber;
+    // Stories depend on PAGE/NUMPAGES and first/even variants, unlike the body flow.
+    this._pageNumber = number;
+    this.renderStories();
+    const clone = this._sheet.cloneNode(true) as HTMLDivElement;
+    this._pageNumber = current;
+    this.renderStories();
+    const flow = clone.querySelector<HTMLElement>(".rt-page-flow");
+    const rtl =
+      this.ownerDocument.defaultView!.getComputedStyle(this._editor)
+        .direction === "rtl";
+    if (flow)
+      flow.style.transform = `translateX(${(rtl ? 1 : -1) * (number - 1) * (this._settings.ContentWidth + this._settings.ColumnGap)}px)`;
+    clone.setAttribute("aria-label", `Page ${number} of ${this.PageCount}`);
+    clone
+      .querySelectorAll<HTMLElement>("[part],[contenteditable],[tabindex],[id]")
+      .forEach((element) => {
+        element.removeAttribute("part");
+        element.removeAttribute("tabindex");
+        element.removeAttribute("id");
+        if (element.hasAttribute("contenteditable"))
+          element.contentEditable = "false";
+      });
+    clone
+      .querySelectorAll("[data-rt-id]")
+      .forEach((element) => element.removeAttribute("data-rt-id"));
+    clone
+      .querySelectorAll(".rt-object-adorner")
+      .forEach((element) => element.remove());
+    clone.removeAttribute("part");
+    return clone;
+  }
+  /** Return actual measured page sheets, including stories, columns and vector equations. */
+  async GetPrintHTML(
+    options: { StartPage?: number; EndPage?: number; Title?: string } = {},
+  ): Promise<string> {
+    if (this.ViewMode !== "page") {
+      const viewer = this.ownerDocument.createElement(
+        "flow-document-page-viewer",
+      );
+      viewer.Document = FlowDocument.FromJSON(this.Document.ToJSON());
+      viewer.style.cssText =
+        "position:fixed;left:-40000px;top:0;width:1200px;height:1400px";
+      viewer.setAttribute("theme", "light");
+      this.ownerDocument.body.append(viewer);
+      try {
+        return await viewer.GetPrintHTML(options);
+      } finally {
+        viewer.Dispose();
+        viewer.remove();
+      }
+    }
+    const layout = await this.Repaginate();
+    const first = options.StartPage ?? 1,
+      last = options.EndPage ?? layout.PageCount;
+    if (
+      !Number.isInteger(first) ||
+      !Number.isInteger(last) ||
+      first < 1 ||
+      last > layout.PageCount ||
+      first > last
+    )
+      throw new RangeError("Invalid print page range.");
+    const sheets: string[] = [];
+    let bytes = 0;
+    for (let page = first; page <= last; page++) {
+      const sheet = this.snapshotPage(page);
+      sheet.style.zoom = "1";
+      const html = sheet.outerHTML;
+      bytes += html.length;
+      if (bytes > 128 * 1024 * 1024)
+        throw new RangeError(
+          "This print job exceeds the 128 MiB page-markup budget. Print a smaller page range.",
+        );
+      sheets.push(html);
+    }
+    const styles = Array.from(this.shadowRoot!.querySelectorAll("style"))
+      .map((style) => style.textContent)
+      .join("\n");
+    const s = this._settings,
+      title = String(
+        options.Title ?? this.Document.GetValue("Title") ?? "Print document",
+      ).replace(
+        /[<>&"']/g,
+        (c) =>
+          ({
+            "<": "&lt;",
+            ">": "&gt;",
+            "&": "&amp;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[c]!,
+      );
+    const override = `@page{size:${s.PageWidth}px ${s.PageHeight}px;margin:0}html,body{margin:0;padding:0;background:white;color:black;--rt-paper:white;--rt-ink:black;--rt-accent:#2463d5;--rt-border:#d7dce5}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.rt-page-sheet{display:block!important;width:${s.PageWidth}px!important;height:${s.PageHeight}px!important;padding:${s.Padding.Top}px ${s.Padding.Right}px ${s.Padding.Bottom}px ${s.Padding.Left}px!important;margin:0!important;border:0!important;outline:none!important;box-shadow:none!important;overflow:hidden!important;zoom:1!important;break-after:page;break-inside:avoid}.rt-page-sheet:last-child{break-after:auto}.rt-page-window{display:block!important;width:${s.ContentWidth}px!important;height:${s.ContentHeight}px!important;overflow:hidden!important}.surface.rt-page-flow{width:${s.ContentWidth}px!important;height:${s.ContentHeight}px!important;column-width:${s.TextColumnWidth}px!important;column-count:${s.ColumnCount}!important;column-gap:${s.ColumnGap}px!important;column-fill:auto!important;transform:var(--rt-print-transform)!important;min-height:0!important}.rt-page-story{display:block!important}.rt-page-story[style*="display: none"]{display:none!important}`;
+    // @media print's generic flow reset must not erase a sheet's own page translation.
+    const body = sheets
+      .join("")
+      .replace(
+        /(<div[^>]*class="[^"]*rt-page-flow[^>]*style=")([^"]*)"/g,
+        (_all, head, style) =>
+          `${head}${style};--rt-print-transform:${style.match(/(?:^|;)\s*transform:\s*([^;]+)/)?.[1] ?? "none"}"`,
+      );
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${styles}\n${override}</style></head><body>${body}</body></html>`;
+  }
+  override Print(): void {
+    const popup = this.ownerDocument.defaultView?.open(
+      "",
+      "_blank",
+      "popup,width=1000,height=900",
+    );
+    if (!popup)
+      throw new Error(
+        "The browser blocked the print window. Invoke Print from a user gesture.",
+      );
+    popup.opener = null;
+    popup.document.body.textContent = "Preparing measured document pages…";
+    void this.GetPrintHTML()
+      .then(async (html) => {
+        popup.document.open();
+        popup.document.write(html);
+        popup.document.close();
+        await popup.document.fonts?.ready;
+        await Promise.all(
+          Array.from(popup.document.images).map((image) =>
+            image.decode?.().catch(() => {}),
+          ),
+        );
+        popup.focus();
+        popup.print();
+      })
+      .catch((error) => {
+        if (!popup.closed)
+          popup.document.body.textContent =
+            error instanceof Error ? error.message : String(error);
+        this.emit("printerror", { error });
+      });
   }
   private renderStories(): void {
     if (!this._header || !this._footer || !this._footnotes) return;
@@ -2082,6 +2783,7 @@ export function registerRichTextWeb(
 ): void {
   if (!registry) return;
   const controls: Array<[string, CustomElementConstructor]> = [
+    ["rich-equation-editor", EquationEditor],
     ["rich-text-box", RichTextBox],
     ["flow-document-reader", FlowDocumentReader],
     ["flow-document-scroll-viewer", FlowDocumentScrollViewer],

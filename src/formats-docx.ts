@@ -1,3 +1,5 @@
+import { equationToOMML, ommlToMathML } from "./equations-omml.js";
+import { equationOptions } from "./equations.js";
 import JSZip from "jszip";
 import { FlowDocument, elementFromJSON, type DocumentNode } from "./model.js";
 import {
@@ -662,7 +664,12 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
         start = exportOffset;
       if (reviewActive) exportOffset++;
       return (
-        prefix + wrapInsertion("<w:r><w:br/></w:r>", start) + emitMarkers()
+        prefix +
+        wrapInsertion(
+          `<w:r><w:br${props.BreakType === "Page" ? ' w:type="page"' : props.BreakType === "Column" ? ' w:type="column"' : ""}/></w:r>`,
+          start,
+        ) +
+        emitMarkers()
       );
     }
     if (n.type === "Hyperlink") {
@@ -720,6 +727,16 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
       const drawing = `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="91440" distR="91440" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="${hRelative}">${hPosition}</wp:positionH><wp:positionV relativeFrom="${vRelative}">${vPosition}</wp:positionV><wp:extent cx="${width}" cy="${height}"/>${wrap}<wp:docPr id="${id}" name="${n.type} text box ${id}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${width}" cy="${height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent>${story}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
       return prefix + wrapInsertion(drawing, at) + emitMarkers();
     }
+    if (n.type === "Equation") {
+      const prefix = emitMarkers(),
+        at = exportOffset;
+      if (reviewActive) exportOffset++;
+      return (
+        prefix +
+        wrapInsertion(equationToOMML(equationOptions(n)), at) +
+        emitMarkers()
+      );
+    }
     if (n.type === "Image") {
       const imageMarkers = emitMarkers(),
         imageOffset = exportOffset;
@@ -773,8 +790,16 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     if (props.BreakPageBefore) pPr += "<w:pageBreakBefore/>";
     if (props.KeepTogether) pPr += "<w:keepLines/>";
     if (props.KeepWithNext) pPr += "<w:keepNext/>";
-    if (props.Margin && typeof props.Margin === "object")
-      pPr += `<w:spacing w:before="${pxToTwip(props.Margin.Top)}" w:after="${pxToTwip(props.Margin.Bottom)}"/><w:ind w:left="${pxToTwip(props.Margin.Left)}" w:right="${pxToTwip(props.Margin.Right)}"/>`;
+    if (
+      (props.Margin && typeof props.Margin === "object") ||
+      props.LineHeight ||
+      props.TextIndent
+    ) {
+      const margin =
+        props.Margin && typeof props.Margin === "object" ? props.Margin : {};
+      pPr += `<w:spacing w:before="${pxToTwip(margin.Top)}" w:after="${pxToTwip(margin.Bottom)}"${props.LineHeight ? ` w:line="${pxToTwip(props.LineHeight)}" w:lineRule="exact"` : ""}/>`;
+      pPr += `<w:ind w:left="${pxToTwip(margin.Left)}" w:right="${pxToTwip(margin.Right)}"${props.TextIndent ? (Number(props.TextIndent) < 0 ? ` w:hanging="${pxToTwip(-Number(props.TextIndent))}"` : ` w:firstLine="${pxToTwip(props.TextIndent)}"`) : ""}/>`;
+    }
     if (num)
       pPr += `<w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="${num}"/></w:numPr>`;
     const formatRevision =
@@ -806,6 +831,9 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     return (
       "<w:p>" +
       (pPr ? "<w:pPr>" + pPr + "</w:pPr>" : "") +
+      (props.BreakColumnBefore && !props.BreakPageBefore
+        ? '<w:r><w:br w:type="column"/></w:r>'
+        : "") +
       emitMarkers() +
       (n.children ?? []).map((c) => inline(c, props)).join("") +
       emitMarkers() +
@@ -1402,6 +1430,19 @@ export async function fromDOCX(
     if (bool(child(pr, "w:keepNext"))) p.KeepWithNext = true;
     const spacing = child(pr, "w:spacing"),
       indent = child(pr, "w:ind");
+    const line = Number(spacing?.attrs["w:line"]);
+    if (Number.isFinite(line) && line > 0) {
+      // OpenXML exact/atLeast line sizes are twips; auto values are 240ths of a line.
+      p.LineHeight =
+        spacing?.attrs["w:lineRule"] === "exact" ||
+        spacing?.attrs["w:lineRule"] === "atLeast"
+          ? line / 15
+          : (line / 240) * (Number(p.FontSize) || 16) * 1.2;
+    }
+    const firstLine = Number(indent?.attrs["w:firstLine"]),
+      hanging = Number(indent?.attrs["w:hanging"]);
+    if (Number.isFinite(hanging)) p.TextIndent = -hanging / 15;
+    else if (Number.isFinite(firstLine)) p.TextIndent = firstLine / 15;
     if (spacing || indent)
       p.Margin = {
         Top: Number(spacing?.attrs["w:before"] || 0) / 15,
@@ -1582,7 +1623,17 @@ export async function fromDOCX(
       if (n.name === "w:tab") return [readText("\t", inherited)];
       if (n.name === "w:br" || n.name === "w:cr") {
         importOffset++;
-        return [node("LineBreak")];
+        return [
+          node(
+            "LineBreak",
+            [],
+            n.attrs["w:type"] === "page"
+              ? { BreakType: "Page" }
+              : n.attrs["w:type"] === "column"
+                ? { BreakType: "Column" }
+                : {},
+          ),
+        ];
       }
       if (n.name === "w:noBreakHyphen") return [readText("‑", inherited)];
       if (n.name === "w:softHyphen") return [readText("\u00ad", inherited)];
@@ -1744,8 +1795,21 @@ export async function fromDOCX(
         ];
       }
       if (n.name === "m:oMath" || n.name === "m:oMathPara") {
-        const opaque = captureOpaque(n);
-        return opaque ? [opaque] : [];
+        try {
+          const source = ommlToMathML(n);
+          importOffset++;
+          return [
+            node("Equation", [], {
+              ...inherited,
+              EquationSource: source,
+              EquationFormat: "mathml",
+              DisplayMode: n.name === "m:oMathPara",
+            }),
+          ];
+        } catch {
+          const opaque = captureOpaque(n);
+          return opaque ? [opaque] : [];
+        }
       }
       if (n.name === "w:drawing") {
         const textbox = descendants(n, "w:txbxContent")[0];
@@ -1936,6 +2000,50 @@ export async function fromDOCX(
       ],
     },
   });
+  const splitHardBreaks = (paragraph: DocumentNode): DocumentNode[] => {
+    type Piece = { children: DocumentNode[]; before?: "Page" | "Column" };
+    const split = (items: DocumentNode[]): Piece[] => {
+      const parts: Piece[] = [{ children: [] }];
+      for (const item of items) {
+        if (
+          item.type === "LineBreak" &&
+          ["Page", "Column"].includes(item.props.BreakType)
+        ) {
+          parts.push({ children: [], before: item.props.BreakType });
+          continue;
+        }
+        if (
+          ["Span", "Bold", "Italic", "Underline", "Hyperlink"].includes(
+            item.type,
+          ) &&
+          item.children
+        ) {
+          const nested = split(item.children);
+          nested.forEach((part, index) => {
+            if (index) parts.push({ children: [], before: part.before });
+            if (part.children.length)
+              parts
+                .at(-1)!
+                .children.push(
+                  index === 0
+                    ? { ...item, children: part.children }
+                    : node(item.type, part.children, { ...item.props }),
+                );
+          });
+        } else parts.at(-1)!.children.push(item);
+      }
+      return parts;
+    };
+    return split(paragraph.children ?? []).map((part, index) =>
+      index === 0
+        ? { ...paragraph, children: part.children }
+        : node("Paragraph", part.children, {
+            ...paragraph.props,
+            BreakPageBefore: part.before === "Page",
+            BreakColumnBefore: part.before === "Column",
+          }),
+    );
+  };
   const convertBlocks = (children: MarkupNode[]): DocumentNode[] => {
     const result: DocumentNode[] = [],
       sections: DocumentNode[] = [];
@@ -2000,6 +2108,7 @@ export async function fromDOCX(
               },
             });
         }
+        const paragraphs = splitHardBreaks(para);
         if (numId && numId !== "0") {
           const level = Math.max(
             0,
@@ -2022,10 +2131,10 @@ export async function fromDOCX(
             entry = { num: numId, level, list };
             listStack.push(entry);
           }
-          entry.list.children!.push(node("ListItem", [para]));
+          entry.list.children!.push(node("ListItem", paragraphs));
         } else {
           listStack.length = 0;
-          result.push(para);
+          result.push(...paragraphs);
         }
         if (section) {
           sections.push(
@@ -2514,7 +2623,8 @@ function nativePropertyChanges(
 
 function hasFloatingStory(node: DocumentNode): boolean {
   return (
-    ["Figure", "Floater"].includes(node.type) ||
+    ["Equation", "Figure", "Floater"].includes(node.type) ||
+    node.props?.BreakColumnBefore === true ||
     (node.children ?? []).some(hasFloatingStory)
   );
 }

@@ -41,6 +41,37 @@ await build({
   sourcemap: true,
   legalComments: "linked",
 });
+// Preserve public constructor identity while privately bundling the audited math renderer.
+// Neither MathJax's speech-rule engine nor its XML dependencies belong in consumers.
+for (const format of ["esm", "cjs"]) {
+  const math = await build({
+    entryPoints: ["src/equations.ts"],
+    outfile: `dist/${format}/equations.js`,
+    bundle: true,
+    format,
+    platform: "browser",
+    target: "es2022",
+    minify: true,
+    sourcemap: true,
+    legalComments: "linked",
+    metafile: true,
+    external: ["./formats-markup.js", "./model.js"],
+  });
+  if (
+    Object.keys(math.metafile.inputs).some((path) =>
+      /speech-rule-engine|xmldom/.test(path),
+    )
+  )
+    throw new Error(
+      "Unexpected speech/XML dependency in the equation renderer",
+    );
+}
+await mkdir("dist/licenses", { recursive: true });
+await cp("node_modules/mathjax-full/LICENSE", "dist/licenses/mathjax.txt");
+await cp(
+  "node_modules/mhchemparser/LICENSE.txt",
+  "dist/licenses/mhchemparser.txt",
+);
 await writeFile("dist/cjs/package.json", JSON.stringify({ type: "commonjs" }));
 await build({
   entryPoints: ["src/pdf.ts"],
@@ -58,7 +89,7 @@ await cp(
   "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
   "dist/pdf-assets/pdf.worker.mjs",
 );
-for (const directory of ["cmaps", "standard_fonts", "wasm", "iccs"])
+for (const directory of ["cmaps", "wasm", "iccs"])
   await cp(
     `node_modules/pdfjs-dist/${directory}`,
     `dist/pdf-assets/${directory}`,

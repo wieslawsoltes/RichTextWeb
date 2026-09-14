@@ -1,4 +1,10 @@
 import {
+  renderEquation,
+  equationOptions,
+  type EquationRenderResult,
+} from "./equations.js";
+import { drawEquationPDF } from "./equations-pdf.js";
+import {
   PDFDocument,
   PDFFont,
   PDFImage,
@@ -106,6 +112,7 @@ type Fragment = {
   props: Props;
   image?: DocumentNode;
   anchor?: DocumentNode;
+  equation?: DocumentNode;
 };
 type Piece = {
   text: string;
@@ -116,6 +123,7 @@ type Piece = {
   height: number;
   image?: PDFImage;
   story?: FloatingStory;
+  equation?: EquationRenderResult;
 };
 type Line = {
   pieces: Piece[];
@@ -315,6 +323,7 @@ async function embedImage(
 
 function inlineFragments(node: DocumentNode, parent: Props): Fragment[] {
   const props = inherited(node, parent);
+  if (node.type === "Equation") return [{ text: "", props, equation: node }];
   if (node.type === "LineBreak") return [{ text: "\n", props }];
   if (node.type === "Image") return [{ text: "", props, image: node }];
   if (node.type === "Figure" || node.type === "Floater")
@@ -334,11 +343,11 @@ export async function toPDF(
   const source = document.ToJSON();
   const props = source.props ?? {};
   const width = positive(
-    options.pageWidth ?? finite(props.PageWidth, 793.7008) * PIXEL,
+    options.pageWidth ?? finite(props.PageWidth, 794) * PIXEL,
     "Page width",
   );
   const height = positive(
-    options.pageHeight ?? finite(props.PageHeight, 1122.5197) * PIXEL,
+    options.pageHeight ?? finite(props.PageHeight, 1123) * PIXEL,
     "Page height",
   );
   const margin =
@@ -508,6 +517,36 @@ export async function toPDF(
         fontSize * 1.25,
         finite(fragment.props.LineHeight, 0) * PIXEL,
       );
+      if (fragment.equation) {
+        const equation = renderEquation(equationOptions(fragment.equation));
+        let width = (equation.WidthEx * fontSize) / 2,
+          height = (equation.HeightEx * fontSize) / 2;
+        const scale = Math.min(
+          1,
+          maxWidth / width,
+          Math.max(1, availableHeight - 4) / height,
+        );
+        width *= scale;
+        height *= scale;
+        if (
+          (fragment.props.DisplayMode || current.width + width > lineWidth) &&
+          current.pieces.length
+        )
+          flush();
+        current.pieces.push({
+          text: "",
+          props: fragment.props,
+          font,
+          size: fontSize,
+          width,
+          height,
+          equation,
+        });
+        current.width += width;
+        current.height = Math.max(current.height, height + 3);
+        if (fragment.props.DisplayMode) flush();
+        continue;
+      }
       if (fragment.anchor) {
         const story = await floatingStory(
           fragment.anchor,
@@ -634,6 +673,8 @@ export async function toPDF(
         const previous = merged[merged.length - 1];
         if (
           previous &&
+          !previous.equation &&
+          !piece.equation &&
           !previous.image &&
           !piece.image &&
           !previous.story &&
@@ -658,11 +699,26 @@ export async function toPDF(
     lineWidth: number,
     p: Props,
   ): void {
-    const alignment = String(p.TextAlignment ?? "Left").toLowerCase();
+    const alignment =
+      line.pieces.length === 1 &&
+      line.pieces[0].equation &&
+      line.pieces[0].props.DisplayMode
+        ? "center"
+        : String(p.TextAlignment ?? "Left").toLowerCase();
     if (alignment === "right") x += lineWidth - line.width;
     else if (alignment === "center") x += (lineWidth - line.width) / 2;
     for (const piece of line.pieces) {
-      if (piece.story) {
+      if (piece.equation) {
+        drawEquationPDF(
+          page,
+          piece.equation,
+          x,
+          top,
+          piece.width,
+          piece.height,
+          color(piece.props.Foreground),
+        );
+      } else if (piece.story) {
         drawStory(piece.story, x, top);
       } else if (piece.image) {
         page.drawImage(piece.image, {

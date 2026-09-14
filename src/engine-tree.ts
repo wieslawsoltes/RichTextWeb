@@ -43,6 +43,7 @@ export function inlineText(node: DocumentNode): string {
   if (node.type === "LineBreak") return "\n";
   if (
     [
+      "Equation",
       "Image",
       "InlineUIContainer",
       "BlockUIContainer",
@@ -107,6 +108,7 @@ export function leaves(root: DocumentNode): TextLeaf[] {
       [
         "Run",
         "LineBreak",
+        "Equation",
         "Image",
         "InlineUIContainer",
         "BlockUIContainer",
@@ -140,7 +142,13 @@ export function sliceInlines(
       if (copy.type === "Run") copy.text = (copy.text ?? "").slice(from, to);
       else if (
         copy.children &&
-        !["InlineUIContainer", "Image", "Figure", "Floater"].includes(copy.type)
+        ![
+          "InlineUIContainer",
+          "Equation",
+          "Image",
+          "Figure",
+          "Floater",
+        ].includes(copy.type)
       )
         copy.children = sliceInlines(copy.children, from, to);
       if (fresh) copy = newIds(copy);
@@ -281,7 +289,7 @@ export function insertText(
         if (node.type === "Hyperlink") wrappers.push(node);
         if (
           node.children &&
-          !["Image", "InlineUIContainer"].includes(node.type)
+          !["Equation", "Image", "InlineUIContainer"].includes(node.type)
         )
           findWrapper(node.children, at - position);
         break;
@@ -342,9 +350,14 @@ export function formatRange(
     if (base >= end || base + length <= start) return [node];
     if (
       node.type === "Run" ||
-      ["Image", "InlineUIContainer", "LineBreak", "Figure", "Floater"].includes(
-        node.type,
-      )
+      [
+        "Equation",
+        "Image",
+        "InlineUIContainer",
+        "LineBreak",
+        "Figure",
+        "Floater",
+      ].includes(node.type)
     ) {
       const from = Math.max(0, start - base),
         to = Math.min(length, end - base);

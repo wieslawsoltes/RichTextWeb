@@ -47,6 +47,13 @@ internal static class NativeSmoke
         await client.ExecuteAsync("RejectAllRevisions");
         Require(!(await client.InvokeAsync("getText")).GetString()!.Contains(" tracked"), "Reject revision");
         checks.Add("Tracked insertion and rejection executed through native commands");
+        await client.ExecuteAsync("TrackChanges", false);
+        await client.ExecuteAsync("InsertEquation", new { Source = @"\frac{a}{b}", Format = "latex", DisplayMode = true });
+        Require((await client.GetDocumentAsync()).GetRawText().Contains("EquationSource"), "Native equation insertion");
+        var paths = await script("document.querySelector('rich-text-box').shadowRoot.querySelectorAll('[data-rt-type=Equation] svg path').length");
+        Require(int.TryParse(paths?.Trim('"'), out int count) && count > 0, "Native vector equation rendering");
+        checks.Add("Native equation command inserted an editable model node and rendered vector paths");
+
 
         await client.ExecuteAsync("TrackChanges", false);
         using var floating = JsonDocument.Parse("""

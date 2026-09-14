@@ -1,4 +1,5 @@
 import {
+  Equation,
   EventDispatcher,
   FlowDocument,
   Run,
@@ -105,6 +106,7 @@ const INLINE_TYPES = new Set([
   "Underline",
   "Hyperlink",
   "LineBreak",
+  "Equation",
   "Image",
   "InlineUIContainer",
   "Figure",
@@ -1261,10 +1263,10 @@ export class RichTextEngine {
       { Kind: "Formatting", Operation: "ClearFormatting" },
     );
   }
-  InsertNode(node: DocumentNode): void {
-    this.InsertFragment([node]);
+  InsertNode(node: DocumentNode): string {
+    return this.InsertFragment([node])[0];
   }
-  InsertFragment(nodes: DocumentNode[]): void {
+  InsertFragment(nodes: DocumentNode[]): string[] {
     if (!Array.isArray(nodes))
       throw new TypeError("InsertFragment expects an array of document nodes.");
     const list = nodes.flatMap((node) =>
@@ -1276,12 +1278,13 @@ export class RichTextEngine {
       )
     )
       throw new Error("Only inline or block document nodes can be inserted.");
-    if (!list.length) return;
+    if (!list.length) return [];
     const allInline = list.every((node) => INLINE_TYPES.has(node.type));
     if (!allInline && list.some((node) => INLINE_TYPES.has(node.type)))
       throw new Error(
         "A fragment must contain either inline nodes or block nodes.",
       );
+    let insertedIds: string[] = [];
     this.mutate(
       (root) => {
         const from = this.start,
@@ -1290,6 +1293,7 @@ export class RichTextEngine {
         deleteRange(root, from, to);
         const block = pointBlock(root, Math.min(from, plainText(root).length));
         const inserted = list.map(newIds);
+        insertedIds = inserted.map((node) => node.id);
         if (block.node.type !== "Paragraph")
           throw new Error(
             "Select a text paragraph before inserting a fragment.",
@@ -1355,6 +1359,55 @@ export class RichTextEngine {
         Operation: "InsertFragment",
       },
     );
+    return insertedIds;
+  }
+  /** Insert vector-rendered mathematical content as a single undoable atom. */
+  InsertEquation(
+    source: string,
+    format: "latex" | "mathml" = "latex",
+    displayMode = false,
+  ): string {
+    const equation = new Equation(source, format, displayMode);
+    return this.InsertNode(equation.ToJSON());
+  }
+  UpdateEquation(
+    elementId: string,
+    source: string,
+    format: "latex" | "mathml" = "latex",
+    displayMode = false,
+  ): void {
+    const target = this.Document.FindById(elementId);
+    if (!target || target.Type !== "Equation")
+      throw new TypeError("The target equation does not exist.");
+    const checked = new Equation(source, format, displayMode);
+    this.BeginChange();
+    try {
+      this.SetElementProperty(elementId, "EquationSource", checked.Source);
+      this.SetElementProperty(elementId, "EquationFormat", checked.Format);
+      this.SetElementProperty(elementId, "DisplayMode", checked.DisplayMode);
+    } finally {
+      this.EndChange();
+    }
+  }
+  InsertPageBreak(): void {
+    this.BeginChange();
+    try {
+      this.InsertParagraph();
+      this.SetParagraphProperty("BreakPageBefore", true);
+      this.SetParagraphProperty("BreakColumnBefore", false);
+    } finally {
+      this.EndChange();
+    }
+  }
+  InsertColumnBreak(): void {
+    this.BeginChange();
+    try {
+      this.InsertParagraph();
+      this.SetParagraphProperty("BreakColumnBefore", true);
+      this.SetParagraphProperty("BreakPageBefore", false);
+    } finally {
+      this.EndChange();
+    }
   }
   InsertImage(
     source: string,
@@ -2174,6 +2227,25 @@ export class RichTextEngine {
       case "numbering":
       case "togglenumbering":
         return this.ToggleList("Decimal");
+      case "insertequation":
+        return this.InsertEquation(
+          typeof parameter === "string"
+            ? parameter
+            : (parameter?.Source ?? "x"),
+          parameter?.Format ?? "latex",
+          parameter?.DisplayMode ?? false,
+        );
+      case "updateequation":
+        return this.UpdateEquation(
+          parameter?.ElementId ?? parameter?.Id,
+          parameter?.Source,
+          parameter?.Format,
+          parameter?.DisplayMode,
+        );
+      case "insertpagebreak":
+        return this.InsertPageBreak();
+      case "insertcolumnbreak":
+        return this.InsertColumnBreak();
       case "insertimage":
         return typeof parameter === "string"
           ? this.InsertImage(parameter)

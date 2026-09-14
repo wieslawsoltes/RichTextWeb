@@ -135,6 +135,83 @@ function updateReadOnlyControls() {
   if ($("source-code")) $("source-code").readOnly = locked;
 }
 const templates = {
+  mathematics: {
+    name: "Mathematics & science",
+    description:
+      "Editable vector equations, matrices, calculus and chemical notation.",
+    build() {
+      const d = new RT.FlowDocument();
+      d.PageWidth = 794;
+      d.PageHeight = 1123;
+      d.PagePadding = new RT.Thickness(64);
+      const heading = new RT.Paragraph("Mathematics & science");
+      heading.HeadingLevel = 1;
+      d.Blocks.Add(heading);
+      d.Blocks.Add(
+        new RT.Paragraph(
+          "Double-click an equation to edit symbols and structures. The source remains editable LaTeX or MathML, and DOCX writes native Office equations.",
+        ),
+      );
+      for (const name of [
+        "Quadratic formula",
+        "Integral",
+        "Matrix",
+        "Normal distribution",
+        "Chemical equilibrium",
+        "Euler identity",
+      ]) {
+        const template = RT.EquationTemplates.find((t) => t.Name === name);
+        const h = new RT.Paragraph(name);
+        h.HeadingLevel = 2;
+        d.Blocks.Add(h);
+        const equation = new RT.Equation(template.Source, "latex", true);
+        equation.AlternativeText = name;
+        d.Blocks.Add(new RT.Paragraph(equation));
+      }
+      return d;
+    },
+  },
+  pagination: {
+    name: "Pages, columns & stories",
+    description:
+      "Physical page breaks, two-column flow, headers and page numbers.",
+    build() {
+      const d = new RT.FlowDocument();
+      d.PageWidth = 794;
+      d.PageHeight = 1123;
+      d.PagePadding = new RT.Thickness(60);
+      d.SetValue("ColumnCount", 2);
+      d.SetValue("ColumnGap", 30);
+      for (let chapter = 1; chapter <= 3; chapter++) {
+        const heading = new RT.Paragraph(`Chapter ${chapter}`);
+        heading.HeadingLevel = 1;
+        heading.BreakPageBefore = chapter > 1;
+        heading.KeepWithNext = true;
+        d.Blocks.Add(heading);
+        for (let index = 0; index < 9; index++)
+          d.Blocks.Add(
+            new RT.Paragraph(
+              `Section ${chapter}.${index + 1}. ` +
+                "A document flows through columns and then continues on the next physical sheet. Explicit page breaks skip any remaining columns. ".repeat(
+                  2,
+                ),
+            ),
+          );
+      }
+      const engine = new RT.RichTextEngine(d),
+        features = new RT.DocumentFeatures(engine);
+      features.SetStory("Header", [
+        new RT.Paragraph("PAGINATION STUDY · RichTextWeb").ToJSON(),
+      ]);
+      const footer = new RT.Paragraph(new RT.Run("Page "));
+      footer.Inlines.Add(RT.createField("PAGE"));
+      footer.Inlines.Add(new RT.Run(" of "));
+      footer.Inlines.Add(RT.createField("NUMPAGES"));
+      features.SetStory("Footer", [footer.ToJSON()]);
+      engine.Dispose();
+      return d;
+    },
+  },
   welcome: {
     name: "The way we work",
     description: "A polished document with styles, tables, lists, and links.",
@@ -321,45 +398,45 @@ function showDialog(title, content, onSubmit) {
 }
 const field = (label, id, value = "", type = "text", extra = "") =>
   `<label class="dialog-field">${label}<input id="${id}" type="${type}" value="${esc(value)}" ${extra}></label>`;
-function makeNode(type, props = {}, children = [], text) {
-  return {
-    type,
-    id: crypto.randomUUID(),
-    props,
-    children,
-    ...(text !== undefined ? { text } : {}),
-  };
-}
-function table(rows, cols) {
-  const rowNodes = [];
-  for (let r = 0; r < rows; r++) {
-    const cells = [];
-    for (let c = 0; c < cols; c++)
-      cells.push(
-        makeNode("TableCell", r === 0 ? { Background: "#edf3fb" } : {}, [
-          makeNode("Paragraph", {}, [
-            makeNode("Run", {}, [], r === 0 ? `Column ${c + 1}` : ""),
-          ]),
-        ]),
-      );
-    rowNodes.push(makeNode("TableRow", {}, cells));
-  }
-  return makeNode("Table", {}, [makeNode("TableRowGroup", {}, rowNodes)]);
-}
 function setDocumentProp(name, value) {
   edit(() => editor.Engine.Change(() => editor.Document.SetValue(name, value)));
 }
-function setView(mode) {
-  editor.ViewMode = mode;
-  $("view-label").textContent = mode === "page" ? "Print layout" : "Continuous";
+const viewNames = {
+  PrintLayout: "Print layout",
+  WebLayout: "Web layout",
+  ReadMode: "Read mode",
+  Outline: "Outline",
+  Draft: "Draft",
+};
+function syncViewUI() {
+  const mode =
+    editor.DocumentView ||
+    (editor.ViewMode === "page" ? "PrintLayout" : "WebLayout");
+  $("view-label").textContent = viewNames[mode];
   $("view-toggle").innerHTML =
-    mode === "page" ? "▣ <span>Page</span>" : "☷ <span>Flow</span>";
-}
-function zoom(value) {
-  state.zoom = Math.max(25, Math.min(150, value));
-  editor.Zoom = state.zoom / 100;
+    editor.ViewMode === "page" ? "▣ <span>Page</span>" : "☷ <span>Flow</span>";
+  if ($("document-view")) $("document-view").value = mode;
+  if ($("page-arrangement")) {
+    $("page-arrangement").value = editor.PageArrangement;
+    $("page-arrangement").disabled = editor.ViewMode !== "page";
+  }
+  state.zoom = Math.round(editor.Zoom * 100);
   $("zoom").value = state.zoom;
   $("zoom-label").textContent = `${state.zoom}%`;
+}
+function setView(mode) {
+  editor.DocumentView =
+    mode === "page"
+      ? "PrintLayout"
+      : mode === "continuous"
+        ? "WebLayout"
+        : mode;
+  syncViewUI();
+}
+function zoom(value) {
+  state.zoom = Math.max(25, Math.min(400, value));
+  editor.Zoom = state.zoom / 100;
+  syncViewUI();
 }
 function openPanel(value) {
   wordWorkspace?.ShowPane("properties");
@@ -545,11 +622,9 @@ function run(command) {
             ),
           () =>
             edit(() =>
-              e.InsertNode(
-                table(
-                  Math.max(1, Math.min(50, +$("table-rows").value)),
-                  Math.max(1, Math.min(12, +$("table-columns").value)),
-                ),
+              e.InsertTable(
+                Math.max(1, Math.min(50, +$("table-rows").value)),
+                Math.max(1, Math.min(12, +$("table-columns").value)),
               ),
             ),
         );
@@ -585,11 +660,7 @@ function run(command) {
               const url = $("link-url").value;
               if (!/^https?:\/\//i.test(url))
                 throw Error("Enter an http or https URL.");
-              e.InsertNode(
-                makeNode("Hyperlink", { NavigateUri: url }, [
-                  makeNode("Run", {}, [], $("link-text").value),
-                ]),
-              );
+              e.InsertHyperlink(url, $("link-text").value);
             }),
         );
         return;
@@ -611,18 +682,19 @@ function run(command) {
               const url = $("image-url").value;
               if (!/^https:\/\//i.test(url))
                 throw Error("Use an HTTPS image URL.");
-              e.InsertNode(
-                makeNode("Image", {
-                  Source: url,
-                  AlternativeText: $("image-alt").value,
-                  Width: Math.max(20, Math.min(700, +$("image-width").value)),
-                }),
+              e.InsertImage(
+                url,
+                $("image-alt").value,
+                Math.max(20, Math.min(700, +$("image-width").value)),
               );
             }),
         );
         return;
       case "page-break":
-        e.SetParagraphProperty("BreakPageBefore", true);
+        e.InsertPageBreak();
+        break;
+      case "column-break":
+        e.InsertColumnBreak();
         break;
       case "date":
         e.InsertText(
@@ -687,7 +759,8 @@ function run(command) {
             edit(() =>
               e.SetParagraphProperty(
                 "LineHeight",
-                Number($("line-height").value),
+                Number($("line-height").value) *
+                  (Number(editor.Selection.Start.Paragraph?.FontSize) || 16),
               ),
             ),
         );
@@ -703,6 +776,40 @@ function run(command) {
         return;
       case "continuous":
         setView("continuous");
+        return;
+      case "read-mode":
+        setView("ReadMode");
+        return;
+      case "outline-view":
+        setView("Outline");
+        return;
+      case "draft-view":
+        setView("Draft");
+        return;
+      case "fit-width":
+        editor.ZoomMode = "PageWidth";
+        syncViewUI();
+        return;
+      case "fit-page":
+        editor.ZoomMode = "WholePage";
+        syncViewUI();
+        return;
+      case "two-pages":
+        editor.PageArrangement = "TwoPages";
+        editor.ZoomMode = "TwoPages";
+        syncViewUI();
+        return;
+      case "vertical-pages":
+        editor.PageArrangement = "Vertical";
+        syncViewUI();
+        return;
+      case "multiple-pages":
+        editor.PageArrangement = "MultiplePages";
+        zoom(50);
+        return;
+      case "single-page":
+        editor.PageArrangement = "SinglePage";
+        syncViewUI();
         return;
       case "focus":
         document.body.classList.toggle("focus");
@@ -790,7 +897,7 @@ function renderPanel() {
   $("inspector-title").textContent = labels[panel];
   let html = "";
   if (panel === "document")
-    html = `<section class="inspector-section"><h3>Page setup</h3><div class="paper-mini" aria-hidden="true">${"<i></i>".repeat(10)}</div><label class="field">Paper size<select id="paper-size"><option value="a4">A4 · 210 × 297 mm</option><option value="letter">Letter · 8.5 × 11 in</option></select></label><label class="field">Orientation<select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label class="field">Margins<select id="margins-select"><option value="64">Normal · 64 px</option><option value="32">Narrow · 32 px</option><option value="96">Wide · 96 px</option></select></label></section><section class="inspector-section"><h3>Document details</h3><div class="property-row"><span>Format</span><strong>Flow document</strong></div><div class="property-row"><span>Paragraphs</span><strong id="stat-paragraphs"></strong></div><div class="property-row"><span>Characters</span><strong id="stat-characters"></strong></div><div class="property-row"><span>Revision</span><strong id="stat-revision"></strong></div></section><section class="inspector-section"><h3>Make it yours</h3><p class="note">Select text to apply formatting. Use heading styles to organize your ideas.</p><p class="note"><span class="help-key">Ctrl B</span> Bold &nbsp; <span class="help-key">Ctrl I</span> Italic</p><button class="plain-button wide" id="panel-export">Export document ↗</button></section>`;
+    html = `<section class="inspector-section"><h3>Page setup</h3><div class="paper-mini" aria-hidden="true">${"<i></i>".repeat(10)}</div><label class="field">Paper size<select id="paper-size"><option value="a4">A4 · 210 × 297 mm</option><option value="letter">Letter · 8.5 × 11 in</option></select></label><label class="field">Orientation<select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label class="field">Margins<select id="margins-select"><option value="72">Normal · 72 px</option><option value="32">Narrow · 32 px</option><option value="96">Wide · 96 px</option></select></label></section><section class="inspector-section"><h3>Document details</h3><div class="property-row"><span>Format</span><strong>Flow document</strong></div><div class="property-row"><span>Paragraphs</span><strong id="stat-paragraphs"></strong></div><div class="property-row"><span>Characters</span><strong id="stat-characters"></strong></div><div class="property-row"><span>Revision</span><strong id="stat-revision"></strong></div></section><section class="inspector-section"><h3>Make it yours</h3><p class="note">Select text to apply formatting. Use heading styles to organize your ideas.</p><p class="note"><span class="help-key">Ctrl B</span> Bold &nbsp; <span class="help-key">Ctrl I</span> Italic</p><button class="plain-button wide" id="panel-export">Export document ↗</button></section>`;
   if (panel === "comments") html = reviewPanel();
   if (panel === "source")
     html = `<section class="inspector-section"><p class="note">Edit the source and apply it to the shared document model.</p><div class="source-buttons"><select id="source-format"><option value="markdown">Markdown</option><option value="html">HTML</option><option value="json">JSON</option><option value="xaml">XAML</option><option value="rtf">RTF</option></select><button id="apply-source">Apply</button></div><textarea id="source-code" class="code-area" aria-label="Document source" spellcheck="false"></textarea><button id="refresh-source" class="plain-button wide">Refresh from document</button><p class="note">JSON preserves the engine model. Other formats preserve their supported features; see format documentation.</p></section>`;
@@ -811,13 +918,46 @@ function renderPanel() {
       )
       .join(
         "",
-      )}<p class="note">Exports use the features supported by each format. PDF uses a separate layout exporter; it is not a pixel-identical print layout.</p><button class="plain-button wide" id="browser-print">Browser print / PDF</button></section>`;
+      )}<p class="note">Exports use the features supported by each format. PDF export includes vector equations and a separate flow layout. Use Browser print / PDF for the measured page layout, headers and columns.</p><button class="plain-button wide" id="browser-print">Browser print / PDF</button></section>`;
   $("inspector-content").innerHTML = html;
   if (panel === "document") {
     updateStats();
     $("paper-size").onchange = (e) => run(e.target.value);
-    $("orientation").onchange = () => run("landscape");
+    $("orientation").value =
+      editor.Document.PageWidth > editor.Document.PageHeight
+        ? "landscape"
+        : "portrait";
+    $("paper-size").value =
+      Math.abs(
+        Math.min(editor.Document.PageWidth, editor.Document.PageHeight) - 816,
+      ) < 2
+        ? "letter"
+        : "a4";
+    const padding = editor.Document.PagePadding;
+    const uniform =
+      typeof padding === "number"
+        ? padding
+        : padding &&
+            padding.Left === padding.Right &&
+            padding.Left === padding.Top &&
+            padding.Left === padding.Bottom
+          ? padding.Left
+          : null;
+    if (![72, 32, 96].includes(uniform))
+      $("margins-select").add(new Option("Custom margins", "custom"));
+    $("margins-select").value =
+      uniform === null || ![72, 32, 96].includes(uniform)
+        ? "custom"
+        : String(uniform);
+    $("orientation").onchange = (event) => {
+      if (
+        (event.target.value === "landscape") !==
+        editor.Document.PageWidth > editor.Document.PageHeight
+      )
+        run("landscape");
+    };
     $("margins-select").onchange = (e) =>
+      e.target.value !== "custom" &&
       setDocumentProp("PagePadding", +e.target.value);
     $("panel-export").onclick = () => openPanel("export");
   }
@@ -958,17 +1098,7 @@ async function download(format) {
   toast(`Exported ${ext.toUpperCase()} document`);
 }
 function printDocument() {
-  const w = window.open("", "_blank");
-  if (!w) {
-    toast("Allow popups to open print preview.");
-    return;
-  }
-  w.document.write(
-    `<!doctype html><html><head><title>${esc($("document-title").value)}</title><style>body{font:16px/1.6 'Segoe UI',sans-serif;max-width:700px;margin:auto}table{border-collapse:collapse;width:100%}td,th{border:1px solid #cbd5e1;padding:8px}img{max-width:100%}@page{margin:20mm}h1,h2,h3{break-after:avoid}</style></head><body>${RT.toHTML(editor.Document)}</body></html>`,
-  );
-  w.document.close();
-  if (w.document.readyState === "complete") w.print();
-  else w.addEventListener("load", () => w.print(), { once: true });
+  safe(() => editor.Print());
 }
 function find() {
   const q = $("find-input").value;
@@ -1050,6 +1180,18 @@ $("toggle-navigation").onclick = () => run("navigation");
 $("show-navigation").onclick = () => run("navigation");
 $("toggle-inspector").onclick = () => wordWorkspace?.TogglePane("properties");
 $("export-primary").onclick = () => openPanel("export");
+$("document-view").onchange = (event) => setView(event.target.value);
+$("page-arrangement").onchange = (event) => {
+  editor.PageArrangement = event.target.value;
+  if (event.target.value === "TwoPages") editor.ZoomMode = "TwoPages";
+  syncViewUI();
+};
+$("fit-page").onclick = () => {
+  editor.ZoomMode = "WholePage";
+  syncViewUI();
+};
+editor.addEventListener("viewchange", syncViewUI);
+editor.addEventListener("paginated", syncViewUI);
 $("zoom").oninput = (e) => zoom(+e.target.value);
 $("zoom-out").onclick = () => zoom(state.zoom - 10);
 $("zoom-in").onclick = () => zoom(state.zoom + 10);

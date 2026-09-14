@@ -154,6 +154,13 @@ internal static class Program
         Assert(review.GetProperty("trackChanges").GetBoolean() && review.GetProperty("currentAuthor").GetString() == "Native test author" && review.GetProperty("revisions").GetArrayLength() > 0, "Native change tracking did not record the edit");
         await client.ExecuteAsync("RejectAllRevisions");
         Assert(!(await client.InvokeAsync("getText")).GetString()!.Contains("tracked insertion"), "Native revision rejection did not remove tracked text");
+        await client.ExecuteAsync("TrackChanges", false);
+        await client.ExecuteAsync("InsertEquation", new { Source = @"\frac{a}{b}", Format = "latex", DisplayMode = true });
+        var mathDocument = await client.GetDocumentAsync();
+        Assert(mathDocument.GetRawText().Contains("EquationSource"), "Native equation command did not reach the engine");
+        await client.SetDocumentAsync(mathDocument);
+        Assert((await client.GetDocumentAsync()).GetRawText().Contains("EquationSource"), "Native equation JSON did not round-trip");
+
     }
     private sealed class FakeTransport : IRichTextTransport
     {

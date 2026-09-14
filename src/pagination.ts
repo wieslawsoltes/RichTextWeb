@@ -64,7 +64,12 @@ export function pageSettings(props: Record<string, any>): PageSettings {
       .trim()
       .split(/[,\s]+/)
       .map((value) => length(value, 72));
-    values = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+    values =
+      raw.includes(",") && v.length === 4
+        ? [v[1], v[2], v[3], v[0]]
+        : raw.includes(",") && v.length === 2
+          ? [v[1], v[0], v[1], v[0]]
+          : [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
   } else values = Array(4).fill(length(raw, 72));
   const Padding = {
     Top: Math.max(0, Math.min(PageHeight / 3, values[0])),
@@ -216,15 +221,14 @@ export function measurePageLayout(
   }
   const PageCount = Math.max(1, largest + 1);
   const Pages: PageLayoutPage[] = [];
+  const overflowPages = new Set(overflows.map((item) => item.PageNumber));
   for (let index = 0; index < PageCount; index++) {
     const current = pages.get(index);
     Pages.push({
       PageNumber: index + 1,
       StartOffset: current?.start ?? (Pages[index - 1]?.EndOffset || 0),
       EndOffset: current?.end ?? 0,
-      HasOverflow: overflows.some(
-        (overflow) => overflow.PageNumber === index + 1,
-      ),
+      HasOverflow: overflowPages.has(index + 1),
     });
   }
   Pages[0].StartOffset = 0;

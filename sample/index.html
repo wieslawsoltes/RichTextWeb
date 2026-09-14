@@ -133,13 +133,30 @@
         ><span id="page-status">Page 1</span><span id="word-count">0 words</span
         ><span id="selection-status">No selection</span
         ><span class="status-spacer"></span><span id="editor-mode">Editing</span
+        ><select id="document-view" aria-label="Document view">
+          <option value="PrintLayout">Print layout</option>
+          <option value="WebLayout">Web layout</option>
+          <option value="ReadMode">Read mode</option>
+          <option value="Outline">Outline</option>
+          <option value="Draft">Draft</option></select
+        ><select id="page-arrangement" aria-label="Page arrangement">
+          <option value="SinglePage">One page</option>
+          <option value="TwoPages">Two pages</option>
+          <option value="Vertical">Vertical pages</option>
+          <option value="MultiplePages">Multiple pages</option></select
+        ><button
+          id="fit-page"
+          title="Fit whole page"
+          aria-label="Fit whole page"
+        >
+          ⛶</button
         ><button id="view-toggle">▣ <span>Page</span></button
         ><button id="zoom-out" aria-label="Zoom out">−</button
         ><input
           id="zoom"
           type="range"
           min="25"
-          max="150"
+          max="400"
           value="100"
           aria-label="Zoom"
         /><button id="zoom-in" aria-label="Zoom in">+</button

@@ -108,6 +108,15 @@ try {
     "dist/types/pdf-operators.d.ts",
   ])
     assert.ok(files.has(file), `Missing published file: ${file}`);
+  assert.ok(
+    !manifest.dependencies?.["mathjax-full"],
+    "Math renderer must be privately bundled",
+  );
+  for (const path of files)
+    assert.ok(
+      !/\.(?:ttf|otf|woff2?|pfb)$/i.test(path),
+      `Do not distribute font binaries: ${path}`,
+    );
   for (const path of files)
     assert.ok(
       !/(^|\/)(node_modules|\.git|\.env)(\/|$)/.test(path),
@@ -166,6 +175,14 @@ assert.equal(root.ObservableObject, mvvm.ObservableObject, 'root/mvvm must share
 assert.equal(root.RichTextWebBridge, bridge.RichTextWebBridge, 'root/bridge must share bridge constructors');
 assert.ok(react.RichTextEditor, 'optional React component must import');
 assert.equal(root.DocumentFeatures, features.DocumentFeatures);
+assert.equal(root.Equation, core.Equation);
+const math = root.renderEquation({Source:'\\\\frac{a}{b}',DisplayMode:true});
+assert.match(math.SVG, /<path/); assert.match(math.MathML, /mfrac/);
+const equation = new core.Equation('x^2');
+const equationDocument = new core.FlowDocument(new core.Paragraph(equation));
+assert.equal(equationDocument.Text, '\uFFFC');
+assert.ok(formats.fromHTML(formats.toHTML(equationDocument)).Blocks.Get(0).Inlines.Get(0) instanceof core.Equation);
+
 assert.equal(root.CollaborativeTextSession, collaboration.CollaborativeTextSession);
 assert.equal(root.RichTextToolbar, web.RichTextToolbar);
 assert.equal(typeof pdf.fromPDF, 'function');

@@ -1,3 +1,4 @@
+import { renderEquation, equationOptions } from "./equations.js";
 import type { DocumentNode, TextElement } from "./model.js";
 import type { VirtualWindow } from "./virtualization.js";
 
@@ -41,6 +42,7 @@ const renderedProperties = [
   "Width",
   "Height",
   "BreakPageBefore",
+  "BreakColumnBefore",
   "KeepTogether",
   "KeepWithNext",
   "Widows",
@@ -249,8 +251,13 @@ export function thicknessCSS(value: unknown): string | undefined {
       .trim()
       .split(/[\s,]+/)
       .map(cssLength);
-    if (parts.length > 0 && parts.length <= 4 && parts.every(Boolean))
+    if (parts.length > 0 && parts.length <= 4 && parts.every(Boolean)) {
+      if (value.includes(",") && parts.length === 4)
+        return [parts[1], parts[2], parts[3], parts[0]].join(" ");
+      if (value.includes(",") && parts.length === 2)
+        return [parts[1], parts[0]].join(" ");
       return parts.join(" ");
+    }
   }
   return undefined;
 }
@@ -302,6 +309,7 @@ function applyStyle(element: HTMLElement, props: Record<string, any>): void {
   const height = cssLength(props.Height);
   if (height) s.height = height;
   if (props.BreakPageBefore) s.breakBefore = "page";
+  else if (props.BreakColumnBefore) s.breakBefore = "column";
   if (props.KeepTogether) s.breakInside = "avoid";
   if (props.KeepWithNext) s.breakAfter = "avoid";
   if (props.Widows !== undefined)
@@ -612,13 +620,35 @@ export function renderDocument(
       position++;
       result.leaves.push({ node: element, start, end: position, atomic: true });
     } else if (
+      current.type === "Equation" ||
       current.type === "Image" ||
       current.type === "InlineUIContainer" ||
       current.type === "Figure" ||
       current.type === "Floater" ||
       isAtomicBlock
     ) {
-      if (current.type === "Image") {
+      if (current.type === "Equation") {
+        element.className = "rt-equation";
+        element.dataset.display = String(Boolean(props.DisplayMode));
+        element.setAttribute("role", "math");
+        element.setAttribute(
+          "aria-label",
+          String(props.AlternativeText || props.EquationSource || "Equation"),
+        );
+        try {
+          const output = renderEquation(equationOptions(current));
+          element.innerHTML = output.SVG;
+          element.title = String(
+            props.AlternativeText || "Double-click to edit equation",
+          );
+          element.querySelector("svg")?.setAttribute("aria-hidden", "true");
+        } catch (error) {
+          element.textContent = "[Invalid equation]";
+          element.setAttribute("aria-invalid", "true");
+          element.title =
+            error instanceof Error ? error.message : String(error);
+        }
+      } else if (current.type === "Image") {
         const image = element as HTMLImageElement;
         const source = safeImageSource(props.Source);
         if (source) image.src = source;

@@ -41,6 +41,15 @@ import { createDocumentRibbon } from "./word-ribbon.js";
 import "./word-workspace.css";
 
 const passive = new Set([
+  "read-mode",
+  "outline-view",
+  "draft-view",
+  "fit-width",
+  "fit-page",
+  "two-pages",
+  "single-page",
+  "vertical-pages",
+  "multiple-pages",
   "quick-save",
   "save",
   "open",
@@ -810,7 +819,7 @@ export function createWordWorkspace(hooks) {
   editor.EnableVirtualization = true;
   editor.VirtualizationThreshold = 120;
   editor.addEventListener("pagechange", Refresh);
-  editor.addEventListener("paginationchange", Refresh);
+  editor.addEventListener("paginated", Refresh);
   editor.addEventListener("scroll", updateSpatial, true);
   editor.addEventListener("pointerdown", (event) => {
     if (!event.altKey) return;

@@ -194,6 +194,7 @@ const nodeTypes = new Set([
   "InlineUIContainer",
   "BlockUIContainer",
   "Image",
+  "Equation",
   "Figure",
   "Floater",
 ]);

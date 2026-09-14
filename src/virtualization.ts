@@ -25,6 +25,7 @@ export interface VirtualWindow {
 }
 
 const atomic = new Set([
+  "Equation",
   "Image",
   "InlineUIContainer",
   "BlockUIContainer",
