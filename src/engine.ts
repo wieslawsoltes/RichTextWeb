@@ -1,3 +1,4 @@
+import { validatePageSetup, type PageSetupOptions } from "./page-setup.js";
 import {
   Equation,
   EventDispatcher,
@@ -1389,6 +1390,11 @@ export class RichTextEngine {
       this.EndChange();
     }
   }
+  SetPageSetup(options: PageSetupOptions): void {
+    const root = this.Document.ToJSON();
+    Object.assign(root.props, validatePageSetup(root.props, options));
+    this.ReplaceDocument(FlowDocument.FromJSON(root));
+  }
   InsertPageBreak(): void {
     this.BeginChange();
     try {
@@ -2242,6 +2248,8 @@ export class RichTextEngine {
           parameter?.Format,
           parameter?.DisplayMode,
         );
+      case "setpagesetup":
+        return this.SetPageSetup(parameter);
       case "insertpagebreak":
         return this.InsertPageBreak();
       case "insertcolumnbreak":

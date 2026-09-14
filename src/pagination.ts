@@ -39,7 +39,7 @@ function length(value: unknown, fallback: number): number {
     typeof value === "string" &&
     /^\d+(?:\.\d+)?(?:px|pt)?$/.test(value.trim())
   )
-    return parseFloat(value) * (value.endsWith("pt") ? 4 / 3 : 1);
+    return parseFloat(value) * (value.trim().endsWith("pt") ? 4 / 3 : 1);
   return fallback;
 }
 
@@ -85,18 +85,21 @@ export function pageSettings(props: Record<string, any>): PageSettings {
         Math.min(PageHeight / 3, length(props.FootnoteAreaHeight, 96)),
       )
     : 0;
-  const ContentWidth = PageWidth - Padding.Left - Padding.Right;
-  const ColumnCount = Math.max(
-    1,
-    Math.min(12, Math.floor(Number(props.ColumnCount) || 1)),
-  );
-  const ColumnGap = Math.max(
-    0,
-    Math.min(
-      ContentWidth / Math.max(1, ColumnCount),
-      length(props.ColumnGap, 32),
-    ),
-  );
+  let ContentWidth = PageWidth - Padding.Left - Padding.Right;
+  const preferredWidth = length(props.ColumnWidth, 0);
+  // ColumnCount is a RichTextWeb extension; an explicitly supplied count takes precedence.
+  const deriveColumns = props.ColumnCount === undefined && preferredWidth > 0;
+  const requestedGap = Math.max(0, length(props.ColumnGap, 32));
+  const ColumnCount = Math.max(1, Math.min(12, deriveColumns
+    ? Math.floor((ContentWidth + requestedGap) / (preferredWidth + requestedGap))
+    : Math.floor(Number(props.ColumnCount) || 1)));
+  const ColumnGap = Math.max(0, Math.min(ContentWidth / ColumnCount, requestedGap));
+  if (deriveColumns && props.IsColumnWidthFlexible === false) {
+    const fixedWidth = Math.min(ContentWidth, ColumnCount * preferredWidth + (ColumnCount - 1) * ColumnGap);
+    // Match WPF's fixed-width semantics: unused column space belongs to the right padding.
+    Padding.Right += ContentWidth - fixedWidth;
+    ContentWidth = fixedWidth;
+  }
   return {
     PageWidth,
     PageHeight,

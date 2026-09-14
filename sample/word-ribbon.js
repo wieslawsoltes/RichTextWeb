@@ -317,6 +317,10 @@ export function createDocumentRibbon({
           group("header-footer", "Header & footer", [
             t("Header", "Header", "page", large),
             t("Footer", "Footer", "page", large),
+            t("FirstPageHeader", "First-page header", "page"),
+            t("FirstPageFooter", "First-page footer", "page"),
+            t("EvenPageHeader", "Even-page header", "page"),
+            t("EvenPageFooter", "Even-page footer", "page"),
             t("PageNumberFooter", "Page number", "#", large),
           ]),
           group("insert-text", "Text", [
@@ -340,7 +344,7 @@ export function createDocumentRibbon({
             app("margins", "Margins", "grid"),
           ]),
           group("layout-paragraph", "Paragraph", [
-            app("spacing", "Spacing", "↕"),
+            t("Paragraph", "Paragraph", "↕"),
             app("indent", "Indent", "indent"),
             app("outdent", "Outdent", "⇤"),
             t("KeepTogether", "Keep together", "link"),

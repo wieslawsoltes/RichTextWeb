@@ -1,3 +1,5 @@
+import { pageSettings } from "./pagination.js";
+import { pageStoryVariantEnabled } from "./page-setup.js";
 import { equationToOMML, ommlToMathML } from "./equations-omml.js";
 import { equationOptions } from "./equations.js";
 import JSZip from "jszip";
@@ -1077,14 +1079,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     return relationship(kind, filename);
   };
   const sectionProperties = (p: Record<string, any>): string => {
-    let margins = p.PagePadding ?? 72;
-    if (typeof margins !== "object")
-      margins = {
-        Left: margins,
-        Top: margins,
-        Right: margins,
-        Bottom: margins,
-      };
+    const geometry = pageSettings(p),
+      margins = geometry.Padding;
     let refs = "";
     for (const [key, kind, variant] of [
       ["Headers", "header", "default"],
@@ -1102,7 +1098,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
             `<w:col w:w="${pxToTwip(w)}" w:space="${pxToTwip(p.ColumnGap ?? 24)}"/>`,
         ).join("")
       : "";
-    return `<w:sectPr>${refs}${p.SectionBreak ? `<w:type w:val="${esc(p.SectionBreak)}"/>` : ""}<w:pgSz w:w="${pxToTwip(p.PageWidth || 816)}" w:h="${pxToTwip(p.PageHeight || 1056)}"${p.PageOrientation ? ` w:orient="${esc(String(p.PageOrientation).toLowerCase())}"` : ""}/><w:pgMar w:top="${pxToTwip(margins.Top)}" w:right="${pxToTwip(margins.Right)}" w:bottom="${pxToTwip(margins.Bottom)}" w:left="${pxToTwip(margins.Left)}" w:header="${pxToTwip(p.HeaderDistance ?? 48)}" w:footer="${pxToTwip(p.FooterDistance ?? 48)}" w:gutter="${pxToTwip(p.Gutter ?? 0)}"/><w:cols w:num="${Math.max(1, Number(p.ColumnCount) || 1)}" w:space="${pxToTwip(p.ColumnGap ?? 24)}"${columnWidths ? ' w:equalWidth="0"' : ""}>${columnWidths}</w:cols>${p.FirstPageHeader || p.FirstPageFooter ? "<w:titlePg/>" : ""}${p.PageNumberStart ? `<w:pgNumType w:start="${Number(p.PageNumberStart)}"/>` : ""}</w:sectPr>`;
+    return `<w:sectPr>${refs}${p.SectionBreak ? `<w:type w:val="${esc(p.SectionBreak)}"/>` : ""}<w:pgSz w:w="${pxToTwip(geometry.PageWidth)}" w:h="${pxToTwip(geometry.PageHeight)}"${p.PageOrientation ? ` w:orient="${esc(String(p.PageOrientation).toLowerCase())}"` : ""}/><w:pgMar w:top="${pxToTwip(margins.Top)}" w:right="${pxToTwip(margins.Right)}" w:bottom="${pxToTwip(margins.Bottom)}" w:left="${pxToTwip(margins.Left)}" w:header="${pxToTwip(p.HeaderDistance ?? 8)}" w:footer="${pxToTwip(p.FooterDistance ?? 8)}" w:gutter="${pxToTwip(p.Gutter ?? 0)}"/><w:cols w:num="${Math.max(1, Number(p.ColumnCount) || 1)}" w:space="${pxToTwip(p.ColumnGap ?? 24)}"${columnWidths ? ' w:equalWidth="0"' : ""}>${columnWidths}</w:cols>${pageStoryVariantEnabled(p, "FirstPage") ? "<w:titlePg/>" : ""}${p.PageNumberStart ? `<w:pgNumType w:start="${Number(p.PageNumberStart)}"/>` : ""}</w:sectPr>`;
   };
   const content = blocks(tableReviewChildren(root), root.props),
     sectPr = sectionProperties(root.props);
@@ -1192,14 +1188,13 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     );
   }
   if (
-    root.props.EvenPageHeader ||
-    root.props.EvenPageFooter ||
+    pageStoryVariantEnabled(root.props, "EvenPage") ||
     root.props.TrackChanges
   ) {
     relationship("settings", "settings.xml");
     zip.file(
       "word/settings.xml",
-      `<w:settings xmlns:w="${NS}">${root.props.EvenPageHeader || root.props.EvenPageFooter ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}</w:settings>`,
+      `<w:settings xmlns:w="${NS}">${pageStoryVariantEnabled(root.props, "EvenPage") ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}</w:settings>`,
     );
     extraTypes.push(
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>',
@@ -1563,6 +1558,10 @@ export async function fromDOCX(
         .map((c) => Number(c.attrs["w:w"]) / 15);
       if (widths.length) p.ColumnWidths = widths;
     }
+    const titlePage = child(section, "w:titlePg");
+    p.DifferentFirstPage =
+      !!titlePage &&
+      !["0", "false", "off"].includes(titlePage.attrs["w:val"] ?? "true");
     const type = val(child(section, "w:type"));
     if (type) p.SectionBreak = type;
     const start = child(section, "w:pgNumType")?.attrs["w:start"];
@@ -2442,6 +2441,10 @@ export async function fromDOCX(
   const settings = parseOfficeXML(
     await read(findPart("settings", "settings.xml")),
   );
+  const evenOdd = descendants(settings, "w:evenAndOddHeaders")[0];
+  defaults.DifferentOddAndEvenPages =
+    !!evenOdd &&
+    !["0", "false", "off"].includes(evenOdd.attrs["w:val"] ?? "true");
   if (descendants(settings, "w:trackRevisions").length)
     defaults.TrackChanges = true;
   if (hasOpaque) {

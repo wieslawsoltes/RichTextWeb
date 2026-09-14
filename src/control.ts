@@ -1,3 +1,4 @@
+import { pageStoryKey, documentPageNumber } from "./page-setup.js";
 import { pageAtOffset, pagePreviewWindow } from "./page-window.js";
 export { pageAtOffset, pagePreviewWindow } from "./page-window.js";
 import { EquationEditor } from "./equation-control.js";
@@ -1585,6 +1586,7 @@ export interface PaginationStatistics {
   LastDurationMs: number;
   Revision: number;
   RealizedPagePreviews: number;
+  RealizedPageSlots: number;
   TotalPages: number;
 }
 
@@ -1709,6 +1711,31 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       this._footer,
     );
     this._viewport.append(this._sheet);
+    for (const [element, kind] of [
+      [this._header, "Header"],
+      [this._footer, "Footer"],
+    ] as const) {
+      element?.addEventListener("dblclick", (event) => {
+        if (this.IsReadOnly) return;
+        event.preventDefault();
+        this.dispatchEvent(
+          new CustomEvent("storyeditrequest", {
+            detail: {
+              kind: pageStoryKey(
+                this._paginationDocument?.props || {},
+                kind,
+                this.PageNumber,
+              ),
+              pageNumber: this.PageNumber,
+            },
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+          }),
+        );
+      });
+    }
+
     const viewsStyle = owner.createElement("style");
     viewsStyle.textContent = `.rt-page-grid{display:grid;gap:24px;justify-content:center;align-items:start;min-width:100%;width:max-content}.rt-page-slot{position:relative;flex:none;outline:1px dashed var(--rt-border);background:color-mix(in srgb,var(--rt-paper) 50%,transparent)}.rt-page-slot>.rt-page-sheet{margin:0}.rt-page-slot-label{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:11px/18px system-ui;color:var(--rt-ink);opacity:.65;pointer-events:none}.rt-page-preview{cursor:text}.rt-page-preview *{pointer-events:none!important;user-select:none!important}.rt-page-preview:focus-visible{outline:2px solid var(--rt-accent)}:host([document-view=ReadMode]) .viewport{padding:32px;background:color-mix(in srgb,var(--rt-workspace) 60%,var(--rt-paper))}:host([document-view=Draft]) .surface{font-family:ui-monospace,monospace!important;line-height:1.7!important;max-width:none;box-shadow:none}:host([document-view=Draft]) .surface p{border-bottom:1px dotted var(--rt-border)}:host([document-view=Outline]) .surface{font-family:system-ui!important;max-width:100%;padding:22px}:host([document-view=Outline]) [data-rt-paragraph]{padding-inline-start:18px;position:relative}:host([document-view=Outline]) [data-rt-paragraph]::before{content:"·";position:absolute;inset-inline-start:0;color:var(--rt-accent)}:host([document-view=Outline]) [data-outline-heading]::before{content:"+";font-weight:bold}:host([document-view=Outline]) [data-outline-hidden]{display:none!important}.rt-page-flow [data-rt-pagination-spacer]{margin:0!important;padding:0!important;border:0!important;pointer-events:none!important;font-size:0!important;line-height:0!important;visibility:hidden;user-select:none}`;
     this.shadowRoot.append(viewsStyle);
@@ -1801,6 +1828,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       LastDurationMs: this._lastLayoutDuration,
       Revision: this._layout?.Revision ?? -1,
       RealizedPagePreviews: this._previews.size,
+      RealizedPageSlots: this._pageSlots.size,
       TotalPages: this.PageCount,
     };
   }
@@ -2012,7 +2040,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     if (changed && this._viewport && this._grid) {
       const slot = this._pageSlots.get(number);
       if (slot) {
-        const top = slot.offsetTop - this._grid.offsetTop;
+        const top = slot.offsetTop + this._grid.offsetTop;
         if (
           top < this._viewport.scrollTop ||
           top + Math.min(slot.offsetHeight, this._viewport.clientHeight) >
@@ -2365,34 +2393,66 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       this._grid = this.ownerDocument.createElement("div");
       this._grid.className = "rt-page-grid";
       this._grid.setAttribute("part", "pages");
-      this._grid.style.gridTemplateColumns = `repeat(${Math.min(cols, end - start + 1)},${width}px)`;
+      this._grid.style.cssText = `display:block;position:relative;min-width:0;margin:0 auto;width:${Math.min(cols, end - start + 1) * (width + 24) - 24}px;height:${Math.ceil((end - start + 1) / cols) * (height + 24) - 24}px`;
       this._viewport.append(this._grid);
       this._pageSlots.clear();
       this._previews.clear();
-      const fragment = this.ownerDocument.createDocumentFragment();
-      for (let number = start; number <= end; number++) {
-        const slot = this.ownerDocument.createElement("div");
-        slot.className = "rt-page-slot";
-        slot.dataset.page = String(number);
-        slot.style.width = `${width}px`;
-        slot.style.height = `${height}px`;
-        const label = this.ownerDocument.createElement("div");
-        label.className = "rt-page-slot-label";
-        label.textContent = `Page ${number}`;
-        slot.append(label);
-        this._pageSlots.set(number, slot);
-        fragment.append(slot);
-      }
-      this._grid.append(fragment);
       this._gridKey = key;
     }
-    const slot = this._pageSlots.get(this.PageNumber);
-    if (slot) {
-      slot.querySelector(".rt-page-preview")?.remove();
-      this._previews.delete(this.PageNumber);
-      this.moveLiveSheet(slot);
-    }
+    this.syncPageSlots(this.wantedPagePreviews());
     this.queuePagePreviews();
+  }
+  private wantedPagePreviews(): number[] {
+    if (!this._viewport || !this._grid) return [];
+    if (this.PageArrangement === "TwoPages") {
+      const first = Math.floor((this.PageNumber - 1) / 2) * 2 + 1;
+      return first < this.PageCount ? [first, first + 1] : [first];
+    }
+    return pagePreviewWindow({
+      PageCount: this.PageCount,
+      Columns: this.arrangementColumns(),
+      PageHeight: this._settings.PageHeight * this.Zoom,
+      ScrollTop:
+        this._viewport.getBoundingClientRect().top -
+        this._grid.getBoundingClientRect().top,
+      ViewportHeight: this._viewport.clientHeight,
+    });
+  }
+  /** Bound the placeholder DOM as well as previews; the live selection-bearing sheet stays pinned. */
+  private syncPageSlots(wanted: number[]): void {
+    if (!this._grid || !this._viewport || !this._sheet) return;
+    const retained = new Set([...wanted, this.PageNumber]);
+    const columns = this.arrangementColumns();
+    const start =
+      this.PageArrangement === "TwoPages"
+        ? Math.floor((this.PageNumber - 1) / 2) * 2 + 1
+        : 1;
+    const width = this._settings.PageWidth * this.Zoom,
+      height = this._settings.PageHeight * this.Zoom;
+    for (const number of retained) {
+      if (this._pageSlots.has(number)) continue;
+      const slot = this.ownerDocument.createElement("div");
+      slot.className = "rt-page-slot";
+      slot.dataset.page = String(number);
+      const index = number - start;
+      slot.style.cssText = `position:absolute;left:${(index % columns) * (width + 24)}px;top:${Math.floor(index / columns) * (height + 24)}px;width:${width}px;height:${height}px`;
+      const label = this.ownerDocument.createElement("div");
+      label.className = "rt-page-slot-label";
+      label.textContent = `Page ${number}`;
+      slot.append(label);
+      this._grid.append(slot);
+      this._pageSlots.set(number, slot);
+    }
+    const live = this._pageSlots.get(this.PageNumber)!;
+    this._previews.get(this.PageNumber)?.remove();
+    this._previews.delete(this.PageNumber);
+    this.moveLiveSheet(live);
+    for (const [number, slot] of this._pageSlots) {
+      if (retained.has(number)) continue;
+      slot.remove();
+      this._pageSlots.delete(number);
+      this._previews.delete(number);
+    }
   }
   private queuePagePreviews(): void {
     if (
@@ -2419,23 +2479,8 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   }
   private renderVisiblePagePreviews(): void {
     if (!this._viewport || !this._grid) return;
-    const wanted: number[] = [];
-    if (this.PageArrangement === "TwoPages")
-      wanted.push(...this._pageSlots.keys());
-    else {
-      const top =
-        this._viewport.getBoundingClientRect().top -
-        this._grid.getBoundingClientRect().top;
-      wanted.push(
-        ...pagePreviewWindow({
-          PageCount: this.PageCount,
-          Columns: this.arrangementColumns(),
-          PageHeight: this._settings.PageHeight * this.Zoom,
-          ScrollTop: top,
-          ViewportHeight: this._viewport.clientHeight,
-        }),
-      );
-    }
+    const wanted = this.wantedPagePreviews();
+    this.syncPageSlots(wanted);
     for (const [page, preview] of this._previews)
       if (!wanted.includes(page) || page === this.PageNumber) {
         preview.remove();
@@ -2632,11 +2677,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     const props = this._paginationDocument?.props || {},
       s = this._settings;
     const variant = (kind: "Header" | "Footer") =>
-      this.PageNumber === 1 && Array.isArray(props[`FirstPage${kind}`])
-        ? props[`FirstPage${kind}`]
-        : this.PageNumber % 2 === 0 && Array.isArray(props[`EvenPage${kind}`])
-          ? props[`EvenPage${kind}`]
-          : props[`${kind}s`] || [];
+      props[pageStoryKey(props, kind, this.PageNumber)] || [];
     const resolveFields = (node: DocumentNode): DocumentNode => {
       const copy = {
         ...node,
@@ -2653,7 +2694,11 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
             type: "Run",
             id: `${node.id}-page-cache`,
             props: {},
-            text: String(type === "PAGE" ? this.PageNumber : this.PageCount),
+            text: String(
+              type === "PAGE"
+                ? documentPageNumber(props, this.PageNumber)
+                : this.PageCount,
+            ),
           },
         ];
       return copy;
@@ -2677,11 +2722,19 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       element.style.left = `${s.Padding.Left}px`;
       element.style.display = blocks.length ? "block" : "none";
       if (kind === "header") {
-        element.style.top = "8px";
-        element.style.height = `${Math.max(0, s.Padding.Top - 16)}px`;
+        const distance = Math.max(
+          0,
+          Math.min(s.Padding.Top, Number(props.HeaderDistance ?? 8) || 0),
+        );
+        element.style.top = `${distance}px`;
+        element.style.height = `${Math.max(0, s.Padding.Top - distance - 8)}px`;
       } else if (kind === "footer") {
-        element.style.bottom = "8px";
-        element.style.height = `${Math.max(0, s.Padding.Bottom - 16)}px`;
+        const distance = Math.max(
+          0,
+          Math.min(s.Padding.Bottom, Number(props.FooterDistance ?? 8) || 0),
+        );
+        element.style.bottom = `${distance}px`;
+        element.style.height = `${Math.max(0, s.Padding.Bottom - distance - 8)}px`;
       } else {
         element.style.top = `${s.Padding.Top + s.ContentHeight}px`;
         element.style.height = `${s.FootnoteHeight}px`;

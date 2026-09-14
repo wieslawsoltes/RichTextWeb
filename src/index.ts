@@ -12,3 +12,6 @@ export * from "./equations.js";
 export * from "./equations-omml.js";
 
 export * from "./equation-control.js";
+
+export * from "./page-setup.js";
+export * from "./story-session.js";

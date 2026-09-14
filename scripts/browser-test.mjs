@@ -1,3 +1,4 @@
+import { runPageAuthoringBrowserChecks } from "../tests/page-authoring.browser.mjs";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -76,6 +77,7 @@ try {
   results.push(...(await runLayoutBrowserChecks(page)));
   results.push(...(await runAuthoringBrowserChecks(page)));
   results.push(...(await runAuthoringPolishBrowserChecks(page)));
+  results.push(...(await runPageAuthoringBrowserChecks(page)));
   results.push(...(await runWorkspaceBrowserChecks(page)));
   results.push(...(await runRichCollaborationBrowserChecks(page)));
   const reactResults = await runReactBrowserChecks(page);

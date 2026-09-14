@@ -26,7 +26,9 @@ export async function runToolbarBrowserChecks(page) {
       "Reusable toolbar formats selected text without sample command handlers",
     );
     await toolbar.getByRole("button", { name: "Footer", exact: true }).click();
-    await toolbar.locator('textarea[name="text"]').fill("Reusable footer");
+    await toolbar
+      .locator('dialog rich-text-box [part="editor"]')
+      .fill("Reusable footer");
     await toolbar.getByRole("button", { name: "Apply", exact: true }).click();
     assert.equal(
       await page.evaluate(
@@ -142,8 +144,8 @@ export async function runToolbarBrowserChecks(page) {
         height: richTextStudio.editor.Document.PageHeight,
       };
     });
-    await toolbar.locator('input[name="width"]').fill("900");
-    await toolbar.locator('input[name="height"]').fill("0");
+    await toolbar.locator('input[name="PageWidth"]').fill("900");
+    await toolbar.locator('input[name="PageHeight"]').fill("0");
     await toolbar.getByRole("button", { name: "Apply", exact: true }).click();
     assert.deepEqual(
       await page.evaluate(() => ({

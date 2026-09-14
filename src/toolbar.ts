@@ -1,3 +1,6 @@
+import { pageSettings } from "./pagination.js";
+import { DocumentStorySession } from "./story-session.js";
+import { pageStoryKey, pageStoryVariantEnabled } from "./page-setup.js";
 import { EquationEditor } from "./equation-control.js";
 import { equationOptions } from "./equations.js";
 import { RichTextBox } from "./control.js";
@@ -5,6 +8,7 @@ import {
   DocumentFeatures,
   createField,
   type FieldType,
+  type StoryKind,
 } from "./document-features.js";
 import {
   FlowDocument,
@@ -142,6 +146,15 @@ export class RichTextToolbar extends HTMLElementBase {
         );
       }
     if (value) {
+      const storyHandler = (event: Event) => {
+        if (event.defaultPrevented) return;
+        event.preventDefault();
+        this.executeSafe("EditStory", (event as CustomEvent).detail.kind);
+      };
+      value.addEventListener("storyeditrequest", storyHandler);
+      this.subscriptions.push(() =>
+        value.removeEventListener("storyeditrequest", storyHandler),
+      );
       const handler = (event: Event) => {
         if (event.defaultPrevented) return;
         event.preventDefault();
@@ -814,26 +827,23 @@ export class RichTextToolbar extends HTMLElementBase {
         break;
       case "Header":
       case "Footer":
-        this.prompt(
-          `Edit ${command.toLowerCase()}`,
-          [
-            {
-              name: "text",
-              label: `${command} text`,
-              value: storyText(
-                editor,
-                command === "Header" ? "Headers" : "Footers",
-              ),
-              type: "textarea",
-            },
-          ],
-          (data) =>
-            mutate(() =>
-              features.SetStory(command === "Header" ? "Headers" : "Footers", [
-                new Paragraph(data.text).ToJSON(),
-              ]),
-            ),
+        this.editStory(
+          editor,
+          pageStoryKey(
+            editor.Document.ToJSON().props,
+            command,
+            (editor as any).PageNumber || 1,
+          ) as StoryKind,
         );
+        break;
+      case "FirstPageHeader":
+      case "FirstPageFooter":
+      case "EvenPageHeader":
+      case "EvenPageFooter":
+        this.editStory(editor, command);
+        break;
+      case "EditStory":
+        this.editStory(editor, parameter as StoryKind);
         break;
       case "PageNumberFooter":
         mutate(() => {
@@ -845,60 +855,99 @@ export class RichTextToolbar extends HTMLElementBase {
           features.SetStory("Footers", [p.ToJSON()]);
         });
         break;
-      case "PageSetup":
+      case "PageSetup": {
+        const props = editor.Document.ToJSON().props;
+        const margins = pageSettings(props).Padding;
         this.prompt(
           "Page setup",
           [
             {
-              name: "width",
+              name: "PageWidth",
               label: "Page width (px)",
               value: String(editor.Document.PageWidth),
               type: "number",
             },
             {
-              name: "height",
+              name: "PageHeight",
               label: "Page height (px)",
               value: String(editor.Document.PageHeight),
               type: "number",
             },
+            ...(["Left", "Top", "Right", "Bottom"] as const).map((side) => ({
+              name: side,
+              label: `${side} margin (px)`,
+              value: String(margins[side]),
+              type: "number",
+            })),
             {
-              name: "padding",
-              label: "Page padding (px)",
-              value: "72",
+              name: "ColumnCount",
+              label: "Columns",
+              value: String(props.ColumnCount ?? 1),
               type: "number",
             },
             {
-              name: "columns",
-              label: "Columns",
-              value: String(editor.Document.GetValue("ColumnCount") ?? 1),
+              name: "ColumnGap",
+              label: "Column gap (px)",
+              value: String(props.ColumnGap ?? 32),
               type: "number",
+            },
+            {
+              name: "HeaderDistance",
+              label: "Header distance from paper edge (px)",
+              value: String(props.HeaderDistance ?? Math.min(8, margins.Top)),
+              type: "number",
+            },
+            {
+              name: "FooterDistance",
+              label: "Footer distance from paper edge (px)",
+              value: String(
+                props.FooterDistance ?? Math.min(8, margins.Bottom),
+              ),
+              type: "number",
+            },
+            {
+              name: "PageNumberStart",
+              label: "Start page numbering at",
+              value: String(props.PageNumberStart ?? 1),
+              type: "number",
+            },
+            {
+              name: "DifferentFirstPage",
+              label: "Different first page",
+              value: pageStoryVariantEnabled(props, "FirstPage") ? "Yes" : "No",
+              options: ["No", "Yes"],
+            },
+            {
+              name: "DifferentOddAndEvenPages",
+              label: "Different odd and even pages",
+              value: pageStoryVariantEnabled(props, "EvenPage") ? "Yes" : "No",
+              options: ["No", "Yes"],
             },
           ],
           (data) =>
-            mutate(() => {
-              const root = editor.Document.ToJSON();
-              for (const [name, key] of [
-                ["width", "PageWidth"],
-                ["height", "PageHeight"],
-                ["padding", "PagePadding"],
-                ["columns", "ColumnCount"],
-              ]) {
-                const value = Number(data[name]);
-                if (
-                  !Number.isFinite(value) ||
-                  value < 0 ||
-                  (key !== "PagePadding" && value === 0) ||
-                  (key === "ColumnCount" && !Number.isInteger(value))
-                )
-                  throw new RangeError(
-                    "Page values must be valid positive dimensions and an integer column count.",
-                  );
-                root.props[key] = value;
-              }
-              engine.ReplaceDocument(FlowDocument.FromJSON(root));
-            }),
+            mutate(() =>
+              features.SetPageSetup({
+                PageWidth: Number(data.PageWidth),
+                PageHeight: Number(data.PageHeight),
+                PagePadding: {
+                  Left: Number(data.Left),
+                  Top: Number(data.Top),
+                  Right: Number(data.Right),
+                  Bottom: Number(data.Bottom),
+                },
+                ColumnCount: Number(data.ColumnCount),
+                ColumnGap: Number(data.ColumnGap),
+                HeaderDistance: Number(data.HeaderDistance),
+                FooterDistance: Number(data.FooterDistance),
+                PageNumberStart: Number(data.PageNumberStart),
+                DifferentFirstPage: data.DifferentFirstPage === "Yes",
+                DifferentOddAndEvenPages:
+                  data.DifferentOddAndEvenPages === "Yes",
+              }),
+            ),
         );
         break;
+      }
       case "PageBreak":
         mutate(() => engine.InsertPageBreak());
         break;
@@ -1035,6 +1084,8 @@ export class RichTextToolbar extends HTMLElementBase {
     submit: (data: Record<string, string>) => unknown,
   ) {
     const dialog = this.createDialog();
+    const targetEditor = this.editor,
+      targetDocument = this.editor?.Document;
     dialog.replaceChildren();
     const form = this.ownerDocument.createElement("form");
     form.method = "dialog";
@@ -1067,11 +1118,17 @@ export class RichTextToolbar extends HTMLElementBase {
     apply.textContent = "Apply";
     apply.className = "primary";
     actions.append(cancel, apply);
-    form.append(actions);
+    const errorMessage = this.ownerDocument.createElement("p");
+    errorMessage.setAttribute("role", "alert");
+    form.append(errorMessage, actions);
     dialog.append(form);
     form.onsubmit = (event) => {
       event.preventDefault();
-      if (this.editor?.IsReadOnly) {
+      if (
+        this.editor !== targetEditor ||
+        this.editor?.Document !== targetDocument ||
+        this.editor?.IsReadOnly
+      ) {
         dialog.close();
         return;
       }
@@ -1081,11 +1138,82 @@ export class RichTextToolbar extends HTMLElementBase {
         );
         dialog.close();
       } catch (error) {
-        this.status = error instanceof Error ? error.message : String(error);
+        errorMessage.textContent =
+          error instanceof Error ? error.message : String(error);
+        this.status = errorMessage.textContent;
         this.Refresh();
       }
     };
     dialog.showModal();
+  }
+  private editStory(editor: RichTextBox, kind: StoryKind): void {
+    const session = new DocumentStorySession(editor.Engine, kind);
+    const dialog = this.createDialog();
+    dialog.style.width = "min(960px,96vw)";
+    const title = this.ownerDocument.createElement("h2");
+    const label = kind.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/s$/, "");
+    title.textContent = `Edit ${label.toLowerCase()}`;
+    const hint = this.ownerDocument.createElement("p");
+    hint.className = "muted";
+    hint.textContent =
+      "Formatting, tables, images, fields and equations are preserved. Apply saves one document undo step; Cancel leaves the original story unchanged.";
+    const nested = this.ownerDocument.createElement("rich-text-box");
+    nested.ViewMode = "continuous";
+    nested.style.cssText =
+      "height:300px;min-height:160px;border:1px solid var(--rt-toolbar-border,#ccd5e1)";
+    nested.setAttribute("aria-label", `${label} content`);
+    nested.setAttribute("theme", editor.getAttribute("theme") || "light");
+    nested.Document = session.Document;
+    const toolbar = this.ownerDocument.createElement("rich-text-toolbar");
+    toolbar.Mode = "home";
+    toolbar.Editor = nested;
+    const insertTools = this.ownerDocument.createElement("div");
+    insertTools.className = "group";
+    for (const command of ["Field", "Equation", "Table", "Image", "Link"]) {
+      const button = this.ownerDocument.createElement("button");
+      button.type = "button";
+      button.textContent = command;
+      button.onmousedown = (event) => event.preventDefault();
+      button.onclick = () => toolbar.Execute(command);
+      insertTools.append(button);
+    }
+    const status = this.ownerDocument.createElement("p");
+    status.setAttribute("role", "alert");
+    const actions = this.ownerDocument.createElement("div");
+    actions.className = "actions";
+    const cancel = this.ownerDocument.createElement("button");
+    cancel.textContent = "Cancel";
+    cancel.onclick = () => dialog.close();
+    const apply = this.ownerDocument.createElement("button");
+    apply.textContent = "Apply";
+    apply.className = "primary";
+    apply.onclick = () => {
+      try {
+        if (this.editor !== editor || editor.IsReadOnly)
+          throw new Error("The target editor changed or became read-only.");
+        if (nested.Document !== session.Document)
+          session.Engine.SetDocument(nested.Document);
+        session.Apply();
+        dialog.close();
+        editor.Focus();
+      } catch (error) {
+        status.textContent =
+          error instanceof Error ? error.message : String(error);
+      }
+    };
+    actions.append(cancel, apply);
+    dialog.append(title, hint, toolbar, insertTools, nested, status, actions);
+    dialog.addEventListener(
+      "close",
+      () => {
+        toolbar.Dispose();
+        nested.Dispose();
+        session.Dispose();
+      },
+      { once: true },
+    );
+    dialog.showModal();
+    nested.Focus();
   }
   private editEquation(editor: RichTextBox): void {
     const dialog = this.createDialog();
@@ -1299,14 +1427,6 @@ export class RichTextToolbar extends HTMLElementBase {
     dialog.append(close);
     dialog.showModal();
   }
-}
-function storyText(editor: RichTextBox, key: string): string {
-  const blocks = editor.Document.GetValue(key) ?? [];
-  const text = (node: any): string =>
-    node.type === "Run"
-      ? (node.text ?? "")
-      : (node.children ?? []).map(text).join("");
-  return blocks.map(text).join("\n");
 }
 export function registerRichTextToolbar(
   registry: CustomElementRegistry | undefined = globalThis.customElements,

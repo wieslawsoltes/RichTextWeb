@@ -57,6 +57,8 @@ const renderedProperties = [
   "PageHeight",
   "PagePadding",
   "ColumnCount",
+  "ColumnWidth",
+  "IsColumnWidthFlexible",
   "ColumnGap",
   "WrapStyle",
   "HorizontalAnchor",

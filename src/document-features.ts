@@ -1,3 +1,4 @@
+import { type PageSetupOptions } from "./page-setup.js";
 import {
   FlowDocument,
   Paragraph,
@@ -408,6 +409,10 @@ export function updateDocumentFields(
 /** Engine-bound document operations: all changes use the control's existing history. */
 export class DocumentFeatures {
   constructor(readonly Engine: RichTextEngine) {}
+  /** Apply validated paper/story settings atomically without replacing the engine or resetting selection. */
+  SetPageSetup(options: PageSetupOptions): void {
+    this.Engine.SetPageSetup(options);
+  }
   InsertField(type: FieldType, argument = "", format?: string): void {
     this.Engine.InsertNode(createField(type, argument, format).ToJSON());
   }
