@@ -1,0 +1,349 @@
++      if (format.value === "mathml" && this.Validate() && this.result)
++        this.change(
++          { ...this.value, Source: this.result.MathML, Format: "mathml" },
++          true,
++        );
++      else if (format.value !== this.Format) {
++        this.change({ ...this.value, Format: "latex" }, true);
++      }
++    };
++    const sourceLabel = d.createElement("label");
++    sourceLabel.className = "caption";
++    sourceLabel.textContent = "Equation source";
++    this.sourceInput = d.createElement("textarea");
++    this.sourceInput.value = this.Source;
++    this.sourceInput.setAttribute("aria-label", "Equation source");
++    this.sourceInput.spellcheck = false;
++    this.sourceInput.oninput = () => {
++      clearTimeout(this.timer);
++      const source = this.sourceInput!.value;
++      this.timer = setTimeout(
++        () => this.change({ ...this.value, Source: source }),
++        120,
++      );
++    };
++    // Ensure Apply never reads the preceding debounce value.
++    this.sourceInput.onchange = () => {
++      clearTimeout(this.timer);
++      this.change({ ...this.value, Source: this.sourceInput!.value });
++    };
++    const sourceRow = d.createElement("div");
++    sourceRow.className = "row";
++    sourceRow.append(sourceLabel, format);
++    const alt = d.createElement("input");
++    alt.className = "alt";
++    alt.placeholder =
++      "Describe the equation for readers using assistive technology";
++    alt.setAttribute("aria-label", "Equation alternative text");
++    alt.value = this.value.AlternativeText ?? "";
++    alt.maxLength = 4096;
++    alt.oninput = () => {
++      if (!this.locked)
++        this.change({ ...this.value, AlternativeText: alt.value });
++    };
++    this.status = d.createElement("div");
++    this.status.className = "error";
++    this.status.setAttribute("role", "status");
++    this.shadowRoot.replaceChildren(
++      style,
++      top,
++      this.preview,
++      hint,
++      tokenRow,
++      structures,
++      options,
++      sourceRow,
++      this.sourceInput,
++      alt,
++      this.status,
++    );
++    if (this.locked)
++      this.shadowRoot
++        .querySelectorAll<HTMLInputElement>("input,select,textarea,button")
++        .forEach((control) => (control.disabled = true));
++    this.renderPreview();
++  }
++  private button(
++    text: string,
++    action: () => unknown,
++    disabled = false,
++  ): HTMLButtonElement {
++    const button = this.ownerDocument.createElement("button");
++    button.type = "button";
++    button.textContent = text;
++    button.dataset.action = text.toLowerCase();
++    button.disabled = disabled || this.locked;
++    button.onclick = () => {
++      try {
++        action();
++      } catch (error) {
++        this.error = error instanceof Error ? error.message : String(error);
++        if (this.status) this.status.textContent = this.error;
++      }
++    };
++    return button;
++  }
++  private renderPreview(): void {
++    if (!this.preview || !this.tokenSelect) return;
++    this.preview.replaceChildren();
++    const undo = this.shadowRoot?.querySelector<HTMLButtonElement>(
++      '[data-action="undo"]',
++    );
++    const redo = this.shadowRoot?.querySelector<HTMLButtonElement>(
++      '[data-action="redo"]',
++    );
++    if (undo) undo.disabled = this.locked || !this.CanUndo;
++    if (redo) redo.disabled = this.locked || !this.CanRedo;
++    if (this.result) {
++      this.preview.innerHTML = this.result.SVG;
++      this.preview
++        .querySelectorAll<HTMLElement>(
++          "g[data-mml-node=mi],g[data-mml-node=mn],g[data-mml-node=mo],g[data-mml-node=mtext]",
++        )
++        .forEach((token, index) => {
++          if (index < this.tokens.length)
++            token.onclick = (event) => {
++              event.stopPropagation();
++              this.SelectToken(index);
++              this.tokenInput?.focus();
++            };
++        });
++    } else this.preview.textContent = "The equation preview will appear here.";
++    this.tokenSelect.replaceChildren();
++    this.tokens.forEach((token, i) =>
++      this.tokenSelect!.add(
++        new Option(`${i + 1}: ${token.Text || "empty"}`, String(i)),
++      ),
++    );
++    if (this.status) this.status.textContent = this.error;
++    this.updateTokenSelection();
++  }
++  private updateTokenSelection(): void {
++    if (this.tokenSelect) this.tokenSelect.value = String(this.selected);
++    if (this.tokenInput)
++      this.tokenInput.value = this.tokens[this.selected]?.Text ?? "";
++    this.preview
++      ?.querySelectorAll(
++        "g[data-mml-node=mi],g[data-mml-node=mn],g[data-mml-node=mo],g[data-mml-node=mtext]",
++      )
++      .forEach((node, i) =>
++        node.toggleAttribute("data-selected", i === this.selected),
++      );
++  }
++}
++
++export function registerEquationEditor(
++  registry: CustomElementRegistry | undefined = globalThis.customElements,
++): void {
++  if (registry && !registry.get("rich-equation-editor"))
++    registry.define("rich-equation-editor", EquationEditor);
++}
++declare global {
++  interface HTMLElementTagNameMap {
++    "rich-equation-editor": EquationEditor;
++  }
++}
+diff --git a/src/equations-omml.ts b/src/equations-omml.ts
+new file mode 100644
+index 0000000..9296fb8
+--- /dev/null
++++ b/src/equations-omml.ts
+@@ -0,0 +1,429 @@
++import {
++  equationToMathML,
++  sanitizeMathML,
++  type EquationOptions,
++} from "./equations.js";
++import {
++  parseMarkup,
++  escapeMarkup as esc,
++  textContent,
++  type MarkupNode,
++} from "./formats-markup.js";
++
++const local = (n: MarkupNode) => n.name.split(":").at(-1)!;
++const elements = (n: MarkupNode) =>
++  n.children.filter((c) => c.name !== "#text");
++const wrap = (tag: string, body: string, props = "") =>
++  `<m:${tag}>${props}${body}</m:${tag}>`;
++const run = (text: string, properties = "") =>
++  `<m:r>${properties ? `<m:rPr>${properties}</m:rPr>` : ""}<m:t xml:space="preserve">${esc(text)}</m:t></m:r>`;
++const math = (tag: string, body: string, attrs = "") =>
++  `<${tag}${attrs}>${body}</${tag}>`;
++const attr = (name: string, value: string) => ` ${name}="${esc(value)}"`;
++
++/** Convert presentation MathML into native editable Office Math, not a picture fallback. */
++export function equationToOMML(options: EquationOptions | string): string {
++  const root = parseMarkup(equationToMathML(options), true).children[0];
++  const convert = (n: MarkupNode): string => {
++    if (n.name === "#text") return n.text?.trim() ? run(n.text) : "";
++    const name = local(n),
++      children = elements(n),
++      c = children.map(convert),
++      body = c.join("");
++    const e = (i: number, tag = "e") => wrap(tag, c[i] ?? "");
++    const properties = (tag: string, values: Record<string, string>) =>
++      wrap(
++        tag + "Pr",
++        Object.entries(values)
++          .map(([key, value]) => `<m:${key} m:val="${esc(value)}"/>`)
++          .join(""),
++      );
++    switch (name) {
++      case "math":
++      case "mrow":
++      case "semantics":
++      case "mstyle":
++        return body;
++      case "mi":
++      case "mn":
++      case "mo":
++      case "mtext": {
++        const variant =
++          n.attrs.mathvariant ?? (name === "mi" ? "italic" : "normal");
++        const sty = /bold/.test(variant)
++          ? /italic/.test(variant)
++            ? "bi"
++            : "b"
++          : /italic/.test(variant)
++            ? "i"
++            : "p";
++        const script = /double-struck/.test(variant)
++          ? "double-struck"
++          : /fraktur/.test(variant)
++            ? "fraktur"
++            : /script/.test(variant)
++              ? "script"
++              : /sans-serif/.test(variant)
++                ? "sans-serif"
++                : /monospace/.test(variant)
++                  ? "monospace"
++                  : "roman";
++        return run(
++          textContent(n),
++          `<m:sty m:val="${sty}"/><m:scr m:val="${script}"/>${name === "mtext" ? "<m:nor/>" : ""}`,
++        );
++      }
++      case "mspace":
++        return run(" ");
++      case "mfrac":
++        return wrap(
++          "f",
++          e(0, "num") + e(1, "den"),
++          properties("f", {
++            type:
++              n.attrs.bevelled === "true"
++                ? "skw"
++                : /^(0|0px|0pt)$/.test(n.attrs.linethickness)
++                  ? "noBar"
++                  : "bar",
++          }),
++        );
++      case "msqrt":
++        return wrap(
++          "rad",
++          wrap("deg", "") + wrap("e", body),
++          properties("rad", { degHide: "1" }),
++        );
++      case "mroot":
++        return wrap(
++          "rad",
++          e(1, "deg") + e(0),
++          properties("rad", { degHide: "0" }),
++        );
++      case "msub":
++        return wrap("sSub", e(0) + e(1, "sub"));
++      case "msup":
++        return wrap("sSup", e(0) + e(1, "sup"));
++      case "msubsup":
++        return wrap("sSubSup", e(0) + e(1, "sub") + e(2, "sup"));
++      case "mover": {
++        const chr = children[1] ? textContent(children[1]) : "";
++        if (n.attrs.accent === "true" || /^[¯‾→^ˆ~˜˙¨⃗]$/.test(chr))
++          return wrap("acc", e(0), properties("acc", { chr }));
++        if (chr === "⏞" || chr === "⏟")
++          return wrap(
++            "groupChr",
++            e(0),
++            properties("groupChr", { chr, pos: "top", vertJc: "bot" }),
++          );
++        return wrap("limUpp", e(0) + e(1, "lim"));
++      }
++      case "munder": {
++        const chr = children[1] ? textContent(children[1]) : "";
++        if (chr === "_" || chr === "¯" || chr === "‾")
++          return wrap("bar", e(0), properties("bar", { pos: "bot" }));
++        if (chr === "⏟" || chr === "⏞")
++          return wrap(
++            "groupChr",
++            e(0),
++            properties("groupChr", { chr, pos: "bot", vertJc: "top" }),
++          );
++        return wrap("limLow", e(0) + e(1, "lim"));
++      }
++      case "munderover":
++        return wrap(
++          "limUpp",
++          wrap("e", wrap("limLow", e(0) + e(1, "lim"))) + e(2, "lim"),
++        );
++      case "mfenced":
++        return wrap(
++          "d",
++          c.map((x) => wrap("e", x)).join(""),
++          properties("d", {
++            begChr: n.attrs.open ?? "(",
++            endChr: n.attrs.close ?? ")",
++            sepChr: n.attrs.separators ?? ",",
++          }),
++        );
++      case "mtable":
++        return wrap(
++          "m",
++          children
++            .map((row) =>
++              wrap(
++                "mr",
++                elements(row)
++                  .map((cell) => wrap("e", convert(cell)))
++                  .join(""),
++              ),
++            )
++            .join(""),
++        );
++      case "mtd":
++      case "mtr":
++      case "mlabeledtr":
++        return body;
++      case "menclose": {
++        const notes = (n.attrs.notation ?? "longdiv").split(/\s+/);
++        return wrap(
++          "borderBox",
++          wrap("e", body),
++          properties("borderBox", {
++            hideTop: notes.includes("box") || notes.includes("top") ? "0" : "1",
++            hideBot:
++              notes.includes("box") || notes.includes("bottom") ? "0" : "1",
++            hideLeft:
++              notes.includes("box") || notes.includes("left") ? "0" : "1",
++            hideRight:
++              notes.includes("box") || notes.includes("right") ? "0" : "1",
++            strikeH: notes.includes("horizontalstrike") ? "1" : "0",
++            strikeV: notes.includes("verticalstrike") ? "1" : "0",
++            strikeBLTR: notes.includes("updiagonalstrike") ? "1" : "0",
++            strikeTLBR: notes.includes("downdiagonalstrike") ? "1" : "0",
++          }),
++        );
++      }
++      case "mphantom":
++        return wrap(
++          "phant",
++          wrap("e", body),
++          properties("phant", { show: "0" }),
++        );
++      case "mpadded":
++        return wrap("box", wrap("e", body));
++      case "mmultiscripts": {
++        let result = c[0] ?? "",
++          i = 1;
++        for (
++          ;
