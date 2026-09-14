@@ -1012,6 +1012,17 @@ export class RichTextToolbar extends HTMLElementBase {
     );
     return true;
   }
+  /** Each invocation owns a dialog: queued close events must not reach a new session. */
+  private createDialog(): HTMLDialogElement {
+    const previous = this.shadowRoot!.querySelector("dialog");
+    const dialog = this.ownerDocument.createElement("dialog");
+    dialog.setAttribute("part", "dialog");
+    if (previous) {
+      if (previous.open) previous.close();
+      previous.replaceWith(dialog);
+    } else this.shadowRoot!.append(dialog);
+    return dialog;
+  }
   private prompt(
     title: string,
     fields: {
@@ -1023,7 +1034,7 @@ export class RichTextToolbar extends HTMLElementBase {
     }[],
     submit: (data: Record<string, string>) => unknown,
   ) {
-    const dialog = this.shadowRoot!.querySelector("dialog")!;
+    const dialog = this.createDialog();
     dialog.replaceChildren();
     const form = this.ownerDocument.createElement("form");
     form.method = "dialog";
@@ -1077,7 +1088,7 @@ export class RichTextToolbar extends HTMLElementBase {
     dialog.showModal();
   }
   private editEquation(editor: RichTextBox): void {
-    const dialog = this.shadowRoot!.querySelector("dialog")!;
+    const dialog = this.createDialog();
     dialog.replaceChildren();
     dialog.style.width = "min(840px,96vw)";
     const heading = this.ownerDocument.createElement("h2");
@@ -1179,7 +1190,7 @@ export class RichTextToolbar extends HTMLElementBase {
     dialog.showModal();
   }
   private editFloatingStory(editor: RichTextBox, object: DocumentNode): void {
-    const dialog = this.shadowRoot!.querySelector("dialog")!;
+    const dialog = this.createDialog();
     dialog.replaceChildren();
     dialog.style.width = "min(900px,95vw)";
     const heading = this.ownerDocument.createElement("h2");
@@ -1244,7 +1255,7 @@ export class RichTextToolbar extends HTMLElementBase {
     nested.Focus();
   }
   private reviewChanges() {
-    const dialog = this.shadowRoot!.querySelector("dialog")!;
+    const dialog = this.createDialog();
     dialog.replaceChildren();
     const h = this.ownerDocument.createElement("h2");
     h.textContent = "Tracked changes";
