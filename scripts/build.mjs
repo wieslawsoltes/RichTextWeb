@@ -1,11 +1,18 @@
 import { build } from "esbuild";
-import { rm, mkdir, readdir, writeFile, cp } from "node:fs/promises";
+import { rm, mkdir, readdir, readFile, writeFile, cp } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 execFileSync(process.execPath, ["node_modules/typescript/bin/tsc"], {
   stdio: "inherit",
 });
+// Public declarations must not require private build-only renderer dependencies.
+for (const name of await readdir("dist/types")) {
+  if (!name.endsWith(".d.ts")) continue;
+  const declaration = await readFile(`dist/types/${name}`, "utf8");
+  if (/from\s+["']mathjax-full|import\s+["']mathjax-full/.test(declaration))
+    throw new Error(`Private math dependency leaked into ${name}`);
+}
 const entries = (await readdir("src"))
   .filter((x) => x.endsWith(".ts"))
   .map((x) => `src/${x}`);

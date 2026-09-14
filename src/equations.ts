@@ -5,7 +5,7 @@ import { SVG } from "mathjax-full/js/output/svg.js";
 import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
 import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
 import { SerializedMmlVisitor } from "mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js";
-import "mathjax-full/js/input/tex/AllPackages.js";
+import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
 import {
   parseMarkup,
   escapeMarkup,
@@ -248,7 +248,11 @@ const createTeX = () =>
       "cancel",
       "color",
       "mhchem",
-    ],
+    ].map((name) => {
+      if (!AllPackages.includes(name))
+        throw new Error(`The bundled equation package is missing: ${name}`);
+      return name;
+    }),
     maxBuffer: 16384,
     maxMacros: 1000,
     formatError: (_jax: unknown, error: Error) => {
