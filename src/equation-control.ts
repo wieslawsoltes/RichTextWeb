@@ -3,6 +3,13 @@ import {
   equationTokens,
   replaceEquationToken,
   EquationTemplates,
+  editEquationMatrix,
+  equationMatrixAt,
+  insertEquationToken,
+  deleteEquationToken,
+  mathMLToLaTeX,
+  type MatrixEdit,
+  type EquationMatrixPosition,
   type EquationOptions,
   type EquationRenderResult,
   type MathToken,
@@ -51,6 +58,7 @@ export class EquationEditor extends HTMLElementBase {
     return { ...this.value };
   }
   set Value(value: EquationOptions) {
+    clearTimeout(this.timer);
     if (!value || typeof value.Source !== "string")
       throw new TypeError("Equation Value needs a Source string.");
     this.value = {
@@ -154,6 +162,61 @@ export class EquationEditor extends HTMLElementBase {
     );
     this.change({ ...this.value, Source: source, Format: "mathml" }, true);
   }
+  get SelectedMatrix(): EquationMatrixPosition | null {
+    if (!this.result || !this.tokens[this.selected]) return null;
+    try {
+      return equationMatrixAt(
+        this.result.MathML,
+        this.tokens[this.selected].Path,
+      );
+    } catch {
+      return null;
+    }
+  }
+  EditMatrix(operation: MatrixEdit): void {
+    if (this.locked) return;
+    const selected = this.validSelection();
+    const source = editEquationMatrix(
+      this.result!.MathML,
+      selected.Path,
+      operation,
+    );
+    this.change({ ...this.value, Source: source, Format: "mathml" }, true);
+  }
+  InsertToken(text: string, before = false): void {
+    if (this.locked) return;
+    const selected = this.validSelection();
+    this.change(
+      {
+        ...this.value,
+        Source: insertEquationToken(
+          this.result!.MathML,
+          selected.Path,
+          text,
+          before,
+        ),
+        Format: "mathml",
+      },
+      true,
+    );
+  }
+  DeleteToken(): void {
+    if (this.locked) return;
+    const selected = this.validSelection();
+    this.change(
+      {
+        ...this.value,
+        Source: deleteEquationToken(this.result!.MathML, selected.Path),
+        Format: "mathml",
+      },
+      true,
+    );
+  }
+  private validSelection(): MathToken {
+    if (!this.Validate() || !this.tokens[this.selected])
+      throw new Error(this.error || "Select a math token first.");
+    return this.tokens[this.selected];
+  }
   InsertTemplate(name: string): void {
     const template = EquationTemplates.find((item) => item.Name === name);
     if (!template) throw new RangeError(`Unknown equation template: ${name}`);
@@ -185,7 +248,11 @@ export class EquationEditor extends HTMLElementBase {
     this.result = null;
     this.shadowRoot?.replaceChildren();
   }
-  private change(next: EquationOptions, rebuild = false): void {
+  private change(
+    next: EquationOptions,
+    rebuild = false,
+    deferred = false,
+  ): void {
     if (this.locked || JSON.stringify(next) === JSON.stringify(this.value))
       return;
     this.undo.push(this.Value);
@@ -193,7 +260,13 @@ export class EquationEditor extends HTMLElementBase {
     this.redo = [];
     this.value = next;
     if (rebuild) this.render();
-    this.Validate();
+    clearTimeout(this.timer);
+    if (deferred) {
+      // The public Value always follows the typed draft; only typesetting is debounced.
+      this.result = null;
+      this.error = "";
+      this.timer = setTimeout(() => this.Validate(), 120);
+    } else this.Validate();
     this.emitValue();
   }
   private refreshValue(): void {
@@ -273,6 +346,13 @@ export class EquationEditor extends HTMLElementBase {
       this.button("Replace symbol", () =>
         this.ReplaceToken(this.tokenInput!.value),
       ),
+      this.button("Insert before", () =>
+        this.InsertToken(this.tokenInput!.value, true),
+      ),
+      this.button("Insert after", () =>
+        this.InsertToken(this.tokenInput!.value),
+      ),
+      this.button("Delete symbol", () => this.DeleteToken()),
     );
     const structures = d.createElement("div");
     structures.className = "row structures";
@@ -290,6 +370,21 @@ export class EquationEditor extends HTMLElementBase {
       );
       button.title = `Insert ${operation}`;
       structures.append(button);
+    }
+    const matrixTools = d.createElement("div");
+    matrixTools.className = "row structures";
+    matrixTools.setAttribute("aria-label", "Matrix editing");
+    for (const [label, operation] of [
+      ["Row before", "InsertRowBefore"],
+      ["Row after", "InsertRowAfter"],
+      ["Delete row", "DeleteRow"],
+      ["Column before", "InsertColumnBefore"],
+      ["Column after", "InsertColumnAfter"],
+      ["Delete column", "DeleteColumn"],
+    ] as const) {
+      const button = this.button(label, () => this.EditMatrix(operation));
+      button.dataset.matrix = operation;
+      matrixTools.append(button);
     }
     const options = d.createElement("div");
     options.className = "row";
@@ -313,7 +408,16 @@ export class EquationEditor extends HTMLElementBase {
           true,
         );
       else if (format.value !== this.Format) {
-        this.change({ ...this.value, Format: "latex" }, true);
+        try {
+          const source = mathMLToLaTeX(this.Source);
+          renderEquation({ Source: source, Format: "latex" });
+          this.change({ ...this.value, Source: source, Format: "latex" }, true);
+        } catch (error) {
+          format.value = this.Format;
+          if (this.status)
+            this.status.textContent =
+              error instanceof Error ? error.message : String(error);
+        }
       }
     };
     const sourceLabel = d.createElement("label");
@@ -325,16 +429,17 @@ export class EquationEditor extends HTMLElementBase {
     this.sourceInput.spellcheck = false;
     this.sourceInput.oninput = () => {
       clearTimeout(this.timer);
-      const source = this.sourceInput!.value;
-      this.timer = setTimeout(
-        () => this.change({ ...this.value, Source: source }),
-        120,
+      this.change(
+        { ...this.value, Source: this.sourceInput!.value },
+        false,
+        true,
       );
     };
     // Ensure Apply never reads the preceding debounce value.
     this.sourceInput.onchange = () => {
       clearTimeout(this.timer);
       this.change({ ...this.value, Source: this.sourceInput!.value });
+      this.Validate();
     };
     const sourceRow = d.createElement("div");
     sourceRow.className = "row";
@@ -360,6 +465,7 @@ export class EquationEditor extends HTMLElementBase {
       hint,
       tokenRow,
       structures,
+      matrixTools,
       options,
       sourceRow,
       this.sourceInput,
@@ -428,6 +534,16 @@ export class EquationEditor extends HTMLElementBase {
     this.updateTokenSelection();
   }
   private updateTokenSelection(): void {
+    const matrix = this.SelectedMatrix;
+    this.shadowRoot
+      ?.querySelectorAll<HTMLButtonElement>("[data-matrix]")
+      .forEach((button) => {
+        button.disabled =
+          this.locked ||
+          !matrix ||
+          (button.dataset.matrix === "DeleteRow" && matrix.Rows === 1) ||
+          (button.dataset.matrix === "DeleteColumn" && matrix.Columns === 1);
+      });
     if (this.tokenSelect) this.tokenSelect.value = String(this.selected);
     if (this.tokenInput)
       this.tokenInput.value = this.tokens[this.selected]?.Text ?? "";

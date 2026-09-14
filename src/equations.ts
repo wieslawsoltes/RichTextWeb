@@ -449,3 +449,5 @@ export function replaceEquationToken(
   parent.children[index] = next;
   return sanitizeMathML(serializeMathNode(root));
 }
+
+export * from "./equation-structure.js";

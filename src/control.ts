@@ -1,3 +1,5 @@
+import { pageAtOffset, pagePreviewWindow } from "./page-window.js";
+export { pageAtOffset, pagePreviewWindow } from "./page-window.js";
 import { EquationEditor } from "./equation-control.js";
 import { FlowDocument, type DocumentNode, type TextPointer } from "./model.js";
 import { RichTextEngine, type TextSelection } from "./engine.js";
@@ -15,6 +17,7 @@ import {
   measurePageLayout,
   pageSettings,
   type PageLayoutResult,
+  type PageLayoutPage,
   type PageSettings,
 } from "./pagination.js";
 import { RichTextToolbar } from "./toolbar.js";
@@ -1612,6 +1615,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   private _fittingZoom = false;
   private _outlineLevel = 9;
   private _fontListener = () => this.InvalidatePagination();
+  private _pageInput: HTMLInputElement | null = null;
   private _pageNumber = 1;
   private _layout: PageLayoutResult | null = null;
   private _settings: PageSettings = pageSettings({});
@@ -1653,7 +1657,35 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     this._nextButton.onclick = () => this.NextPage();
     this._pageLabel = owner.createElement("span");
     this._pageLabel.setAttribute("aria-live", "polite");
-    nav.append(this._previousButton, this._pageLabel, this._nextButton);
+    this._pageInput = owner.createElement("input");
+    this._pageInput.type = "number";
+    this._pageInput.min = "1";
+    this._pageInput.step = "1";
+    this._pageInput.value = "1";
+    this._pageInput.setAttribute("part", "page-number");
+    this._pageInput.setAttribute("aria-label", "Go to page");
+    this._pageInput.style.cssText =
+      "width:58px;min-width:0;font:inherit;color:inherit;background:var(--rt-paper);border:1px solid var(--rt-border);border-radius:4px;padding:5px";
+    const navigate = () => {
+      this.GoToPage(Number(this._pageInput!.value));
+      this._pageInput!.value = String(this.PageNumber);
+    };
+    this._pageInput.onchange = navigate;
+    this._pageInput.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        navigate();
+      }
+      if (event.key === "Escape")
+        this._pageInput!.value = String(this.PageNumber);
+    };
+    nav.style.flexWrap = "wrap";
+    nav.append(
+      this._previousButton,
+      this._pageLabel,
+      this._pageInput,
+      this._nextButton,
+    );
     this.shadowRoot.insertBefore(nav, this._viewport);
     this._sheet = owner.createElement("div");
     this._sheet.className = "rt-page-sheet";
@@ -1700,7 +1732,10 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
           : this.Engine.InsertPageBreak();
         return;
       }
-      if (event.key === "PageDown" || event.key === "PageUp") {
+      if (
+        this.ViewMode === "page" &&
+        (event.key === "PageDown" || event.key === "PageUp")
+      ) {
         event.preventDefault();
         event.key === "PageDown" ? this.NextPage() : this.PreviousPage();
       }
@@ -1948,6 +1983,10 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   }
   get CanGoToPreviousPage(): boolean {
     return this._pageNumber > 1;
+  }
+  /** Locate a measured page without scanning all preceding pages. */
+  GetPageAtOffset(offset: number, backward = false): PageLayoutPage | null {
+    return this._layout ? pageAtOffset(this._layout, offset, backward) : null;
   }
   get LayoutResult(): Readonly<PageLayoutResult> | null {
     return this._layout;
@@ -2255,6 +2294,11 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     );
     if (this._pageLabel)
       this._pageLabel.textContent = `Page ${this.PageNumber} of ${this.PageCount}`;
+    if (this._pageInput) {
+      this._pageInput.max = String(this.PageCount);
+      if (this.shadowRoot?.activeElement !== this._pageInput)
+        this._pageInput.value = String(this.PageNumber);
+    }
     if (this._previousButton)
       this._previousButton.disabled = !this.CanGoToPreviousPage;
     if (this._nextButton) this._nextButton.disabled = !this.CanGoToNextPage;
@@ -2379,16 +2423,18 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
     if (this.PageArrangement === "TwoPages")
       wanted.push(...this._pageSlots.keys());
     else {
-      const columns = this.arrangementColumns(),
-        stride = this._settings.PageHeight * this.Zoom + 24;
-      const top = Math.max(0, this._viewport.scrollTop - this._grid.offsetTop);
-      const first = Math.max(0, Math.floor(top / stride) - 1) * columns + 1;
-      const last = Math.min(
-        this.PageCount,
-        (Math.ceil((top + this._viewport.clientHeight) / stride) + 1) * columns,
+      const top =
+        this._viewport.getBoundingClientRect().top -
+        this._grid.getBoundingClientRect().top;
+      wanted.push(
+        ...pagePreviewWindow({
+          PageCount: this.PageCount,
+          Columns: this.arrangementColumns(),
+          PageHeight: this._settings.PageHeight * this.Zoom,
+          ScrollTop: top,
+          ViewportHeight: this._viewport.clientHeight,
+        }),
       );
-      for (let page = first; page <= last && wanted.length < 8; page++)
-        wanted.push(page);
     }
     for (const [page, preview] of this._previews)
       if (!wanted.includes(page) || page === this.PageNumber) {
@@ -2734,11 +2780,7 @@ export class RichTextPageEditor extends FlowDocumentPageViewer {
         .then((layout) => {
           if (this.ViewMode !== "page" || !this.isConnected) return;
           const offset = this.Selection.End.Offset;
-          const page = layout.Pages.find(
-            (item, index) =>
-              offset >= item.StartOffset &&
-              (offset < item.EndOffset || index === layout.Pages.length - 1),
-          );
+          const page = pageAtOffset(layout, offset);
           if (page && page.PageNumber !== this.PageNumber) {
             this._followingCaret = true;
             try {

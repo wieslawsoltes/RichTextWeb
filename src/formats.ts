@@ -163,6 +163,7 @@ function styles(props: Record<string, any>): string {
       /superscript/i.test(String(props.BaselineAlignment)) ? "super" : "sub",
     );
   if (props.BreakPageBefore) add("break-before", "page");
+  else if (props.BreakColumnBefore) add("break-before", "column");
   return result.join(";");
 }
 const floatingBlockDisplays: Record<string, string> = {
@@ -482,6 +483,7 @@ function parseStyle(source: string): Record<string, any> {
         .replace(/\s*!important$/i, "");
     if (key === "break-before" || key === "page-break-before") {
       if (value === "page" || value === "always") props.BreakPageBefore = true;
+      else if (value === "column") props.BreakColumnBefore = true;
       continue;
     }
     if (key === "direction" && /^(?:rtl|ltr)$/.test(value)) {

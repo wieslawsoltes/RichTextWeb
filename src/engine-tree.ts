@@ -331,7 +331,11 @@ export function insertText(
             ...(line ? [insertion(line)] : []),
             ...(index === lines.length - 2 ? after : []),
           ],
-          { ...block.node.props, BreakPageBefore: false },
+          {
+            ...block.node.props,
+            BreakPageBefore: false,
+            BreakColumnBefore: false,
+          },
         ),
       );
     block.parent.children!.splice(block.index + 1, 0, ...created);

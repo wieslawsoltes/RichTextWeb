@@ -17,7 +17,7 @@ console.log(layout.Pages, layout.Overflows, editor.PaginationStatistics);
 
 `DocumentView` accepts `PrintLayout`, `WebLayout`, `ReadMode`, `Outline` and `Draft`. Print layout and read mode show finite physical sheets; web layout is continuous rich text. Read mode adds a presentation-level read-only policy without discarding an application's existing policy. Draft uses continuous simplified presentation. Outline exposes heading hierarchy and `OutlineLevel` (1–9, where 9 includes body text); it does not implement Word's full master-document system.
 
-`PageArrangement` accepts `SinglePage`, `TwoPages`, `Vertical` and `MultiplePages`. There is one live, selection-bearing editor. Nearby sheets are non-editable mirrors that become the live page when activated by pointer or keyboard. Mirror realization is bounded to eight sheets; the complete body is still measured by the browser. This is **not** a fully virtualized page-layout engine. For very large continuous documents, use `EnableVirtualization` on `RichTextBox`/web view, which windows actual top-level block DOM.
+`PageArrangement` accepts `SinglePage`, `TwoPages`, `Vertical` and `MultiplePages`. There is one live, selection-bearing editor. Nearby sheets are non-editable mirrors that become the live page when activated by pointer or keyboard. Mirror realization prioritizes the visible viewport, then one adjacent row, with a hard ceiling of 128 sheets for pathological host geometries; the complete body is still measured by the browser. This is **not** a fully virtualized page-layout engine. For very large continuous documents, use `EnableVirtualization` on `RichTextBox`/web view, which windows actual top-level block DOM.
 
 `ZoomMode` accepts `Custom`, `PageWidth`, `WholePage` and `TwoPages`. Custom `Zoom` is a ratio. Automatic fitting uses the actual viewport and responds to panel resizing. The sample offers the views, arrangements and fit commands in its View ribbon and status bar.
 
@@ -124,3 +124,19 @@ DOCX exports native Office Math (`m:oMath`) structures rather than pictures, and
 - MathJax TeX input options: https://docs.mathjax.org/en/v3.2/options/input/tex.html
 - Open XML Office Math: https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.math.officemath
 - CSS fragmentation in multi-column layouts: https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Multicol_layout/Handling_content_breaks
+
+## Matrix and token authoring
+
+`EquationEditor.EditMatrix(operation)` inserts/deletes rows and columns in the innermost selected matrix. Operations are `InsertRowBefore`, `InsertRowAfter`, `DeleteRow`, `InsertColumnBefore`, `InsertColumnAfter`, and `DeleteColumn`. Select a token within a cell first. `SelectedMatrix` reports its zero-based row/column, shape, and path. Regular unmerged matrices up to 32 × 32 cells are supported; the last row/column cannot be deleted. Existing cells and surrounding delimiters are preserved. New cells contain editable square placeholders.
+
+`InsertToken(text, before)` and `DeleteToken()` add or remove symbols without violating fixed-arity fraction/script operands. All these edits participate in the workbench undo/redo stack; Apply remains one shared document edit. The pure functions `editEquationMatrix`, `equationMatrixAt`, `insertEquationToken`, and `deleteEquationToken` are also available through the equations entry point.
+
+The source property follows input immediately; only vector rendering is debounced. `Validate()` validates the latest draft synchronously. Setting a new Value cancels pending validation. The format selector now converts common presentation MathML structures to TeX rather than rendering XML as TeX text. `mathMLToLaTeX` rejects unsupported structures such as padded expressions and labeled rows, retaining the original source. Conversion preserves supported mathematical structure but does not promise identical fine spacing/styling for every MathML attribute. Keep MathML for those documents.
+
+With a toolbar attached, Alt+= opens the reusable equation workbench; a text selection becomes the initial equation source. Read-only hosts reject authoring. Multiple toolbars do not open duplicate dialogs.
+
+## Navigation and page windows
+
+The reusable page-navigation control includes a validated numeric page jump. `GetPageAtOffset(offset, backward)` returns the measured page using binary search; backward affinity selects the previous sheet at an exact boundary. Continuous views no longer intercept PageUp/PageDown as finite-page navigation. Enter and multiline paste clear inherited physical/column breaks on continuation paragraphs, and HTML now retains explicit column breaks.
+
+`pagePreviewWindow` computes visible-first sheet realization using the actual viewport. Multiple-page layouts at small zoom no longer leave visible lower rows blank merely because overscan consumed an eight-sheet budget. The hard ceiling protects pathological host viewports; complete document body measurement and mirrored-body cloning remain document-size work.

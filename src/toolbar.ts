@@ -154,6 +154,23 @@ export class RichTextToolbar extends HTMLElementBase {
               : "FloatingLayout",
         );
       };
+      const equationKey = (event: KeyboardEvent) => {
+        if (
+          !event.defaultPrevented &&
+          event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          (event.code === "Equal" || event.key === "=") &&
+          !value.IsReadOnly
+        ) {
+          event.preventDefault();
+          this.executeSafe("Equation");
+        }
+      };
+      value.addEventListener("keydown", equationKey);
+      this.subscriptions.push(() =>
+        value.removeEventListener("keydown", equationKey),
+      );
       value.addEventListener("objecteditrequest", handler);
       this.subscriptions.push(() =>
         value.removeEventListener("objecteditrequest", handler),
@@ -1076,7 +1093,9 @@ export class RichTextToolbar extends HTMLElementBase {
     workbench.Value = equation
       ? equationOptions(equation)
       : {
-          Source: String.raw`x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}`,
+          Source:
+            editor.Selection.Text.trim() ||
+            String.raw`x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}`,
           Format: "latex",
           DisplayMode: false,
         };
