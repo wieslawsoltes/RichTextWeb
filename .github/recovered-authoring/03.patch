@@ -1,0 +1,368 @@
++      "require": "./dist/cjs/pdf.js"
++    },
++    "./document": {
++      "types": "./dist/types/document-features.d.ts",
++      "import": "./dist/esm/document-features.js",
++      "require": "./dist/cjs/document-features.js"
++    },
++    "./collaboration": {
++      "types": "./dist/types/collaboration.d.ts",
++      "import": "./dist/esm/collaboration.js",
++      "require": "./dist/cjs/collaboration.js"
++    },
++    "./equations": {
++      "types": "./dist/types/equations.d.ts",
++      "import": "./dist/esm/equations.js",
++      "require": "./dist/cjs/equations.js"
++    }
++  },
++  "files": [
++    "dist",
++    "src",
++    "docs",
++    "adapters",
++    "sample",
++    "LICENSE",
++    "NOTICE",
++    "README.md",
++    "CHANGELOG.md",
++    "README.web.md",
++    "blazor/README.md",
++    "blazor/INTEGRATION.md"
++  ],
++  "sideEffects": [
++    "./dist/esm/control.js",
++    "./dist/esm/index.js",
++    "./dist/cjs/control.js",
++    "./dist/cjs/index.js"
++  ],
++  "engines": {
++    "node": ">=22.13.0"
++  },
++  "keywords": [
++    "rich-text",
++    "flowdocument",
++    "richtextbox",
++    "wpf",
++    "winui",
++    "avalonia",
++    "mvvm",
++    "web-components",
++    "react",
++    "markdown",
++    "docx",
++    "pdf"
++  ],
++  "scripts": {
++    "build": "node scripts/build.mjs",
++    "typecheck": "tsc --noEmit",
++    "test": "node scripts/test.mjs",
++    "test:browser": "node scripts/browser-test.mjs",
++    "test:package": "node scripts/package-test.mjs",
++    "build:demo": "node scripts/build-demo.mjs",
++    "dev": "node scripts/serve.mjs",
++    "check": "npm run build && npm test && npm run build:demo && npm run test:package",
++    "benchmark": "node scripts/benchmark.mjs",
++    "prepack": "npm run build",
++    "format": "prettier --write \"{src,sample,scripts,tests,docs,adapters,web,.github}/**/*.{ts,js,mjs,css,html,json,yml,yaml,md}\" \"*.{json,md}\"",
++    "format:check": "prettier --check \"{src,sample,scripts,tests,docs,adapters,web,.github}/**/*.{ts,js,mjs,css,html,json,yml,yaml,md}\" \"*.{json,md}\""
++  },
++  "dependencies": {
++    "@pdf-lib/fontkit": "1.1.1",
++    "jszip": "3.10.2",
++    "marked": "18.0.12",
++    "pdf-lib": "1.17.1",
++    "pdfjs-dist": "6.3.289"
++  },
++  "peerDependencies": {
++    "react": "^18.3.0 || ^19.0.0"
++  },
++  "peerDependenciesMeta": {
++    "react": {
++      "optional": true
++    }
++  },
++  "devDependencies": {
++    "@types/node": "26.5.1",
++    "@types/react": "19.3.0",
++    "@wieslawsoltes/dockyard": "0.1.0",
++    "@wieslawsoltes/dynamicdataweb": "0.1.1",
++    "@wieslawsoltes/quikgraphweb": "0.2.0",
++    "@wieslawsoltes/rbushweb": "0.1.1",
++    "@wieslawsoltes/reactiveweb": "0.2.0",
++    "@wieslawsoltes/ribbon-web": "0.1.1",
++    "@wieslawsoltes/treedatagridweb": "0.1.0",
++    "esbuild": "0.28.2",
++    "playwright": "1.63.0",
++    "prettier": "3.9.6",
++    "react": "19.3.0",
++    "react-dom": "19.3.0",
++    "rxjs": "7.8.2",
++    "typescript": "7.0.2",
++    "mathjax-full": "3.2.2"
++  },
++  "publishConfig": {
++    "access": "public",
++    "provenance": true
++  },
++  "overrides": {
++    "@xmldom/xmldom": "0.9.12"
++  }
++}
+ diff --git a/sample/app.js b/sample/app.js
+index b2d43e9..87428a9 100644
+--- a/sample/app.js
++++ b/sample/app.js
+@@ -135,6 +135,83 @@ function updateReadOnlyControls() {
+   if ($("source-code")) $("source-code").readOnly = locked;
+ }
+ const templates = {
++  mathematics: {
++    name: "Mathematics & science",
++    description:
++      "Editable vector equations, matrices, calculus and chemical notation.",
++    build() {
++      const d = new RT.FlowDocument();
++      d.PageWidth = 794;
++      d.PageHeight = 1123;
++      d.PagePadding = new RT.Thickness(64);
++      const heading = new RT.Paragraph("Mathematics & science");
++      heading.HeadingLevel = 1;
++      d.Blocks.Add(heading);
++      d.Blocks.Add(
++        new RT.Paragraph(
++          "Double-click an equation to edit symbols and structures. The source remains editable LaTeX or MathML, and DOCX writes native Office equations.",
++        ),
++      );
++      for (const name of [
++        "Quadratic formula",
++        "Integral",
++        "Matrix",
++        "Normal distribution",
++        "Chemical equilibrium",
++        "Euler identity",
++      ]) {
++        const template = RT.EquationTemplates.find((t) => t.Name === name);
++        const h = new RT.Paragraph(name);
++        h.HeadingLevel = 2;
++        d.Blocks.Add(h);
++        const equation = new RT.Equation(template.Source, "latex", true);
++        equation.AlternativeText = name;
++        d.Blocks.Add(new RT.Paragraph(equation));
++      }
++      return d;
++    },
++  },
++  pagination: {
++    name: "Pages, columns & stories",
++    description:
++      "Physical page breaks, two-column flow, headers and page numbers.",
++    build() {
++      const d = new RT.FlowDocument();
++      d.PageWidth = 794;
++      d.PageHeight = 1123;
++      d.PagePadding = new RT.Thickness(60);
++      d.SetValue("ColumnCount", 2);
++      d.SetValue("ColumnGap", 30);
++      for (let chapter = 1; chapter <= 3; chapter++) {
++        const heading = new RT.Paragraph(`Chapter ${chapter}`);
++        heading.HeadingLevel = 1;
++        heading.BreakPageBefore = chapter > 1;
++        heading.KeepWithNext = true;
++        d.Blocks.Add(heading);
++        for (let index = 0; index < 9; index++)
++          d.Blocks.Add(
++            new RT.Paragraph(
++              `Section ${chapter}.${index + 1}. ` +
++                "A document flows through columns and then continues on the next physical sheet. Explicit page breaks skip any remaining columns. ".repeat(
++                  2,
++                ),
++            ),
++          );
++      }
++      const engine = new RT.RichTextEngine(d),
++        features = new RT.DocumentFeatures(engine);
++      features.SetStory("Header", [
++        new RT.Paragraph("PAGINATION STUDY · RichTextWeb").ToJSON(),
++      ]);
++      const footer = new RT.Paragraph(new RT.Run("Page "));
++      footer.Inlines.Add(RT.createField("PAGE"));
++      footer.Inlines.Add(new RT.Run(" of "));
++      footer.Inlines.Add(RT.createField("NUMPAGES"));
++      features.SetStory("Footer", [footer.ToJSON()]);
++      engine.Dispose();
++      return d;
++    },
++  },
+   welcome: {
+     name: "The way we work",
+     description: "A polished document with styles, tables, lists, and links.",
+@@ -321,45 +398,45 @@ function showDialog(title, content, onSubmit) {
+ }
+ const field = (label, id, value = "", type = "text", extra = "") =>
+   `<label class="dialog-field">${label}<input id="${id}" type="${type}" value="${esc(value)}" ${extra}></label>`;
+-function makeNode(type, props = {}, children = [], text) {
+-  return {
+-    type,
+-    id: crypto.randomUUID(),
+-    props,
+-    children,
+-    ...(text !== undefined ? { text } : {}),
+-  };
+-}
+-function table(rows, cols) {
+-  const rowNodes = [];
+-  for (let r = 0; r < rows; r++) {
+-    const cells = [];
+-    for (let c = 0; c < cols; c++)
+-      cells.push(
+-        makeNode("TableCell", r === 0 ? { Background: "#edf3fb" } : {}, [
+-          makeNode("Paragraph", {}, [
+-            makeNode("Run", {}, [], r === 0 ? `Column ${c + 1}` : ""),
+-          ]),
+-        ]),
+-      );
+-    rowNodes.push(makeNode("TableRow", {}, cells));
+-  }
+-  return makeNode("Table", {}, [makeNode("TableRowGroup", {}, rowNodes)]);
+-}
+ function setDocumentProp(name, value) {
+   edit(() => editor.Engine.Change(() => editor.Document.SetValue(name, value)));
+ }
+-function setView(mode) {
+-  editor.ViewMode = mode;
+-  $("view-label").textContent = mode === "page" ? "Print layout" : "Continuous";
++const viewNames = {
++  PrintLayout: "Print layout",
++  WebLayout: "Web layout",
++  ReadMode: "Read mode",
++  Outline: "Outline",
++  Draft: "Draft",
++};
++function syncViewUI() {
++  const mode =
++    editor.DocumentView ||
++    (editor.ViewMode === "page" ? "PrintLayout" : "WebLayout");
++  $("view-label").textContent = viewNames[mode];
+   $("view-toggle").innerHTML =
+-    mode === "page" ? "▣ <span>Page</span>" : "☷ <span>Flow</span>";
++    editor.ViewMode === "page" ? "▣ <span>Page</span>" : "☷ <span>Flow</span>";
++  if ($("document-view")) $("document-view").value = mode;
++  if ($("page-arrangement")) {
++    $("page-arrangement").value = editor.PageArrangement;
++    $("page-arrangement").disabled = editor.ViewMode !== "page";
++  }
++  state.zoom = Math.round(editor.Zoom * 100);
++  $("zoom").value = state.zoom;
++  $("zoom-label").textContent = `${state.zoom}%`;
++}
++function setView(mode) {
++  editor.DocumentView =
++    mode === "page"
++      ? "PrintLayout"
++      : mode === "continuous"
++        ? "WebLayout"
++        : mode;
++  syncViewUI();
+ }
+ function zoom(value) {
+-  state.zoom = Math.max(25, Math.min(150, value));
++  state.zoom = Math.max(25, Math.min(400, value));
+   editor.Zoom = state.zoom / 100;
+-  $("zoom").value = state.zoom;
+-  $("zoom-label").textContent = `${state.zoom}%`;
++  syncViewUI();
+ }
+ function openPanel(value) {
+   wordWorkspace?.ShowPane("properties");
+@@ -545,11 +622,9 @@ function run(command) {
+             ),
+           () =>
+             edit(() =>
+-              e.InsertNode(
+-                table(
+-                  Math.max(1, Math.min(50, +$("table-rows").value)),
+-                  Math.max(1, Math.min(12, +$("table-columns").value)),
+-                ),
++              e.InsertTable(
++                Math.max(1, Math.min(50, +$("table-rows").value)),
++                Math.max(1, Math.min(12, +$("table-columns").value)),
+               ),
+             ),
+         );
+@@ -585,11 +660,7 @@ function run(command) {
+               const url = $("link-url").value;
+               if (!/^https?:\/\//i.test(url))
+                 throw Error("Enter an http or https URL.");
+-              e.InsertNode(
+-                makeNode("Hyperlink", { NavigateUri: url }, [
+-                  makeNode("Run", {}, [], $("link-text").value),
+-                ]),
+-              );
++              e.InsertHyperlink(url, $("link-text").value);
+             }),
+         );
+         return;
+@@ -611,18 +682,19 @@ function run(command) {
+               const url = $("image-url").value;
+               if (!/^https:\/\//i.test(url))
+                 throw Error("Use an HTTPS image URL.");
+-              e.InsertNode(
+-                makeNode("Image", {
+-                  Source: url,
+-                  AlternativeText: $("image-alt").value,
+-                  Width: Math.max(20, Math.min(700, +$("image-width").value)),
+-                }),
++              e.InsertImage(
++                url,
++                $("image-alt").value,
++                Math.max(20, Math.min(700, +$("image-width").value)),
+               );
+             }),
+         );
+         return;
+       case "page-break":
+-        e.SetParagraphProperty("BreakPageBefore", true);
++        e.InsertPageBreak();
++        break;
++      case "column-break":
++        e.InsertColumnBreak();
+         break;
+       case "date":
+         e.InsertText(
+@@ -687,7 +759,8 @@ function run(command) {
+             edit(() =>
+               e.SetParagraphProperty(
+                 "LineHeight",
+-                Number($("line-height").value),
++                Number($("line-height").value) *
++                  (Number(editor.Selection.Start.Paragraph?.FontSize) || 16),
+               ),
+             ),
+         );
+@@ -704,6 +777,40 @@ function run(command) {
+       case "continuous":
+         setView("continuous");
+         return;
++      case "read-mode":
++        setView("ReadMode");
++        return;
++      case "outline-view":
++        setView("Outline");
++        return;
++      case "draft-view":
++        setView("Draft");
++        return;
++      case "fit-width":
++        editor.ZoomMode = "PageWidth";
++        syncViewUI();
++        return;
++      case "fit-page":
++        editor.ZoomMode = "WholePage";
++        syncViewUI();
++        return;
++      case "two-pages":
++        editor.PageArrangement = "TwoPages";
++        editor.ZoomMode = "TwoPages";
++        syncViewUI();
++        return;
