@@ -1,0 +1,167 @@
+@@ -1520,7 +1533,7 @@ export class RichTextBox extends HTMLElementBase {
+     const preserved = new Map<string, DocumentNode>();
+     for (const element of Array.from(
+       container.querySelectorAll<HTMLElement>(
+-        '[data-rt-type="Figure"],[data-rt-type="Floater"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
++        '[data-rt-type="Equation"],[data-rt-type="Figure"],[data-rt-type="Floater"],[data-rt-type="Image"],[data-rt-type="InlineUIContainer"],[data-rt-type="BlockUIContainer"]',
+       ),
+     )) {
+       if (!container.contains(element)) continue;
+@@ -1557,7 +1570,48 @@ export class FlowDocumentScrollViewer extends FlowDocumentReader {
+     super("continuous");
+   }
+ }
++export type DocumentViewMode =
++  "PrintLayout" | "WebLayout" | "ReadMode" | "Outline" | "Draft";
++export type PageArrangement =
++  "SinglePage" | "TwoPages" | "Vertical" | "MultiplePages";
++export type DocumentZoomMode =
++  "Custom" | "PageWidth" | "WholePage" | "TwoPages";
++export interface PaginationStatistics {
++  LayoutPasses: number;
++  CacheHits: number;
++  LastDurationMs: number;
++  Revision: number;
++  RealizedPagePreviews: number;
++  TotalPages: number;
++}
++
+ export class FlowDocumentPageViewer extends FlowDocumentReader {
++  static override get observedAttributes(): string[] {
++    return [
++      ...super.observedAttributes,
++      "document-view",
++      "page-arrangement",
++      "zoom-mode",
++    ];
++  }
++  private _documentView: DocumentViewMode = "PrintLayout";
++  private _arrangement: PageArrangement = "SinglePage";
++  private _zoomMode: DocumentZoomMode = "Custom";
++  private _layoutEpoch = 0;
++  private _measuredEpoch = -1;
++  private _layoutPasses = 0;
++  private _cacheHits = 0;
++  private _lastLayoutDuration = 0;
++  private _configuredRevision = -1;
++  private _configuredDocument: FlowDocument | null = null;
++  private _grid: HTMLDivElement | null = null;
++  private _gridKey = "";
++  private _pageSlots = new Map<number, HTMLDivElement>();
++  private _previews = new Map<number, HTMLDivElement>();
++  private _previewFrame = 0;
++  private _fittingZoom = false;
++  private _outlineLevel = 9;
++  private _fontListener = () => this.InvalidatePagination();
+   private _pageNumber = 1;
+   private _layout: PageLayoutResult | null = null;
+   private _settings: PageSettings = pageSettings({});
+@@ -1580,7 +1634,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+     if (!this._editor || !this._viewport || !this.shadowRoot) return;
+     const owner = this.ownerDocument;
+     const style = owner.createElement("style");
+-    style.textContent = `.rt-page-sheet{position:relative;flex:none;box-sizing:border-box;margin:0 auto;background:var(--rt-paper);color:var(--rt-ink);border:1px solid var(--rt-border);box-shadow:0 2px 14px #17233a13;overflow:hidden}.rt-page-window{position:relative;overflow:hidden}.surface.rt-page-flow{box-sizing:content-box!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:visible!important;column-fill:auto;widows:2;orphans:2;outline:none!important}.surface.rt-page-flow p{widows:2;orphans:2}.surface.rt-page-flow tr{break-inside:avoid-column}.rt-page-nav{display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;background:var(--rt-workspace);border-bottom:1px solid var(--rt-border);font:13px Segoe UI,system-ui,sans-serif}.rt-page-nav button{font:inherit;padding:5px 12px;border:1px solid var(--rt-border);border-radius:5px;background:var(--rt-paper);color:var(--rt-ink);cursor:pointer}.rt-page-nav button:disabled{opacity:.45;cursor:default}.rt-page-nav button:focus-visible{outline:2px solid var(--rt-accent)}.rt-page-story.surface{position:absolute;box-sizing:border-box;min-height:0!important;max-height:none;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:hidden;font-size:12px;line-height:1.4}.rt-page-story p{margin:0 0 .35em;min-height:0}.rt-page-notes{border-top:1px solid var(--rt-border)!important;padding-top:6px!important}.rt-page-story a{cursor:pointer}@media print{.rt-page-nav{display:none}.rt-page-sheet{width:auto!important;height:auto!important;overflow:visible;zoom:1!important;border:0;box-shadow:none}.rt-page-window{width:auto!important;height:auto!important;overflow:visible}.surface.rt-page-flow{height:auto!important;width:auto!important;column-width:auto!important;columns:auto!important;transform:none!important}.rt-page-story{display:none!important}}`;
++    style.textContent = `:host{display:flex;flex-direction:column;overflow:hidden}.viewport{flex:1;min-height:0;height:auto}.rt-page-sheet{position:relative;flex:none;box-sizing:border-box;margin:0 auto;background:var(--rt-paper);color:var(--rt-ink);border:0;outline:1px solid var(--rt-border);box-shadow:0 2px 14px #17233a13;overflow:hidden}.rt-page-window{position:relative;overflow:hidden}.surface.rt-page-flow{box-sizing:content-box!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:visible!important;column-fill:auto;widows:2;orphans:2;outline:none!important}.surface.rt-page-flow p{widows:2;orphans:2}.surface.rt-page-flow tr{break-inside:avoid-column}.rt-page-nav{display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;background:var(--rt-workspace);border-bottom:1px solid var(--rt-border);font:13px Segoe UI,system-ui,sans-serif}.rt-page-nav button{font:inherit;padding:5px 12px;border:1px solid var(--rt-border);border-radius:5px;background:var(--rt-paper);color:var(--rt-ink);cursor:pointer}.rt-page-nav button:disabled{opacity:.45;cursor:default}.rt-page-nav button:focus-visible{outline:2px solid var(--rt-accent)}.rt-page-story.surface{position:absolute;box-sizing:border-box;min-height:0!important;max-height:none;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important;zoom:1!important;overflow:hidden;font-size:12px;line-height:1.4}.rt-page-story p{margin:0 0 .35em;min-height:0}.rt-page-notes{border-top:1px solid var(--rt-border)!important;padding-top:6px!important}.rt-page-story a{cursor:pointer}@media print{.rt-page-nav{display:none}.rt-page-sheet{width:auto!important;height:auto!important;overflow:visible;zoom:1!important;border:0;box-shadow:none}.rt-page-window{width:auto!important;height:auto!important;overflow:visible}.surface.rt-page-flow{height:auto!important;width:auto!important;column-width:auto!important;columns:auto!important;transform:none!important}.rt-page-story{display:none!important}}`;
+     this.shadowRoot.append(style);
+     const nav = owner.createElement("div");
+     nav.className = "rt-page-nav";
+@@ -1623,8 +1677,29 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+       this._footer,
+     );
+     this._viewport.append(this._sheet);
+-    this._editor.addEventListener("load", () => this.queuePagination(), true);
++    const viewsStyle = owner.createElement("style");
++    viewsStyle.textContent = `.rt-page-grid{display:grid;gap:24px;justify-content:center;align-items:start;min-width:100%;width:max-content}.rt-page-slot{position:relative;flex:none;outline:1px dashed var(--rt-border);background:color-mix(in srgb,var(--rt-paper) 50%,transparent)}.rt-page-slot>.rt-page-sheet{margin:0}.rt-page-slot-label{position:absolute;bottom:-21px;left:0;right:0;text-align:center;font:11px/18px system-ui;color:var(--rt-ink);opacity:.65;pointer-events:none}.rt-page-preview{cursor:text}.rt-page-preview *{pointer-events:none!important;user-select:none!important}.rt-page-preview:focus-visible{outline:2px solid var(--rt-accent)}:host([document-view=ReadMode]) .viewport{padding:32px;background:color-mix(in srgb,var(--rt-workspace) 60%,var(--rt-paper))}:host([document-view=Draft]) .surface{font-family:ui-monospace,monospace!important;line-height:1.7!important;max-width:none;box-shadow:none}:host([document-view=Draft]) .surface p{border-bottom:1px dotted var(--rt-border)}:host([document-view=Outline]) .surface{font-family:system-ui!important;max-width:100%;padding:22px}:host([document-view=Outline]) [data-rt-paragraph]{padding-inline-start:18px;position:relative}:host([document-view=Outline]) [data-rt-paragraph]::before{content:"·";position:absolute;inset-inline-start:0;color:var(--rt-accent)}:host([document-view=Outline]) [data-outline-heading]::before{content:"+";font-weight:bold}:host([document-view=Outline]) [data-outline-hidden]{display:none!important}.rt-page-flow [data-rt-pagination-spacer]{margin:0!important;padding:0!important;border:0!important;pointer-events:none!important;font-size:0!important;line-height:0!important;visibility:hidden;user-select:none}`;
++    this.shadowRoot.append(viewsStyle);
++    this._viewport.addEventListener("scroll", () => this.queuePagePreviews(), {
++      passive: true,
++    });
++    this._editor.addEventListener(
++      "load",
++      () => this.InvalidatePagination(),
++      true,
++    );
+     this._editor.addEventListener("keydown", (event) => {
++      if (
++        (event.ctrlKey || event.metaKey) &&
++        event.key === "Enter" &&
++        !this.IsReadOnly
++      ) {
++        event.preventDefault();
++        event.shiftKey
++          ? this.Engine.InsertColumnBreak()
++          : this.Engine.InsertPageBreak();
++        return;
++      }
+       if (event.key === "PageDown" || event.key === "PageUp") {
+         event.preventDefault();
+         event.key === "PageDown" ? this.NextPage() : this.PreviousPage();
+@@ -1634,29 +1709,228 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
+   override connectedCallback(): void {
+     super.connectedCallback();
+     if (typeof ResizeObserver !== "undefined" && !this._resizeObserver) {
+-      this._resizeObserver = new ResizeObserver(() => this.queuePagination());
++      this._resizeObserver = new ResizeObserver(() => {
++        this.applyZoomMode();
++        this.updatePageArrangement();
++        this.queuePagination();
++      });
+       this._resizeObserver.observe(this);
+     }
++    this.ownerDocument.fonts?.addEventListener(
++      "loadingdone",
++      this._fontListener,
++    );
+     this.queuePagination();
+   }
+   override disconnectedCallback(): void {
++    this.ownerDocument?.fonts?.removeEventListener(
++      "loadingdone",
++      this._fontListener,
++    );
++    if (this._previewFrame)
++      this.ownerDocument.defaultView?.cancelAnimationFrame(this._previewFrame);
++    this._previewFrame = 0;
+     this._resizeObserver?.disconnect();
+     this._resizeObserver = null;
+     super.disconnectedCallback();
+   }
+   override Refresh(): void {
++    this._editor
++      ?.querySelectorAll("[data-rt-pagination-spacer]")
++      .forEach((node) => node.remove());
+     super.Refresh();
++    this._configuredRevision = -1;
++    this._layoutEpoch = (this._layoutEpoch || 0) + 1;
++    this._previews?.clear();
++    this._pageSlots?.forEach((slot) =>
++      slot.querySelector(".rt-page-preview")?.remove(),
++    );
+     this.configurePagination();
++    this.configureOutline();
++    if (this._editor) this._lastDOMHTML = this._editor.innerHTML;
++    this.queuePagination();
++  }
++  /** Invalidate font/image geometry without rebuilding the model or edit history. */
++  InvalidatePagination(): void {
++    this._layoutEpoch++;
++    this._previews.clear();
++    this._pageSlots.forEach((slot) =>
++      slot.querySelector(".rt-page-preview")?.remove(),
++    );
+     this.queuePagination();
+   }
++  get PaginationStatistics(): PaginationStatistics {
++    return {
++      LayoutPasses: this._layoutPasses,
++      CacheHits: this._cacheHits,
++      LastDurationMs: this._lastLayoutDuration,
++      Revision: this._layout?.Revision ?? -1,
++      RealizedPagePreviews: this._previews.size,
++      TotalPages: this.PageCount,
++    };
++  }
++  get DocumentView(): DocumentViewMode {
++    return this._documentView;
++  }
++  set DocumentView(value: DocumentViewMode) {
