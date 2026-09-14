@@ -1,0 +1,320 @@
++      viewer.Document = FlowDocument.FromJSON(this.Document.ToJSON());
++      viewer.style.cssText =
++        "position:fixed;left:-40000px;top:0;width:1200px;height:1400px";
++      viewer.setAttribute("theme", "light");
++      this.ownerDocument.body.append(viewer);
++      try {
++        return await viewer.GetPrintHTML(options);
++      } finally {
++        viewer.Dispose();
++        viewer.remove();
++      }
++    }
++    const layout = await this.Repaginate();
++    const first = options.StartPage ?? 1,
++      last = options.EndPage ?? layout.PageCount;
++    if (
++      !Number.isInteger(first) ||
++      !Number.isInteger(last) ||
++      first < 1 ||
++      last > layout.PageCount ||
++      first > last
++    )
++      throw new RangeError("Invalid print page range.");
++    const sheets: string[] = [];
++    let bytes = 0;
++    for (let page = first; page <= last; page++) {
++      const sheet = this.snapshotPage(page);
++      sheet.style.zoom = "1";
++      const html = sheet.outerHTML;
++      bytes += html.length;
++      if (bytes > 128 * 1024 * 1024)
++        throw new RangeError(
++          "This print job exceeds the 128 MiB page-markup budget. Print a smaller page range.",
++        );
++      sheets.push(html);
++    }
++    const styles = Array.from(this.shadowRoot!.querySelectorAll("style"))
++      .map((style) => style.textContent)
++      .join("\n");
++    const s = this._settings,
++      title = String(
++        options.Title ?? this.Document.GetValue("Title") ?? "Print document",
++      ).replace(
++        /[<>&"']/g,
++        (c) =>
++          ({
++            "<": "&lt;",
++            ">": "&gt;",
++            "&": "&amp;",
++            '"': "&quot;",
++            "'": "&#39;",
++          })[c]!,
++      );
++    const override = `@page{size:${s.PageWidth}px ${s.PageHeight}px;margin:0}html,body{margin:0;padding:0;background:white;color:black;--rt-paper:white;--rt-ink:black;--rt-accent:#2463d5;--rt-border:#d7dce5}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}.rt-page-sheet{display:block!important;width:${s.PageWidth}px!important;height:${s.PageHeight}px!important;padding:${s.Padding.Top}px ${s.Padding.Right}px ${s.Padding.Bottom}px ${s.Padding.Left}px!important;margin:0!important;border:0!important;outline:none!important;box-shadow:none!important;overflow:hidden!important;zoom:1!important;break-after:page;break-inside:avoid}.rt-page-sheet:last-child{break-after:auto}.rt-page-window{display:block!important;width:${s.ContentWidth}px!important;height:${s.ContentHeight}px!important;overflow:hidden!important}.surface.rt-page-flow{width:${s.ContentWidth}px!important;height:${s.ContentHeight}px!important;column-width:${s.TextColumnWidth}px!important;column-count:${s.ColumnCount}!important;column-gap:${s.ColumnGap}px!important;column-fill:auto!important;transform:var(--rt-print-transform)!important;min-height:0!important}.rt-page-story{display:block!important}.rt-page-story[style*="display: none"]{display:none!important}`;
++    // @media print's generic flow reset must not erase a sheet's own page translation.
++    const body = sheets
++      .join("")
++      .replace(
++        /(<div[^>]*class="[^"]*rt-page-flow[^>]*style=")([^"]*)"/g,
++        (_all, head, style) =>
++          `${head}${style};--rt-print-transform:${style.match(/(?:^|;)\s*transform:\s*([^;]+)/)?.[1] ?? "none"}"`,
++      );
++    return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${styles}\n${override}</style></head><body>${body}</body></html>`;
++  }
++  override Print(): void {
++    const popup = this.ownerDocument.defaultView?.open(
++      "",
++      "_blank",
++      "popup,width=1000,height=900",
++    );
++    if (!popup)
++      throw new Error(
++        "The browser blocked the print window. Invoke Print from a user gesture.",
++      );
++    popup.opener = null;
++    popup.document.body.textContent = "Preparing measured document pages…";
++    void this.GetPrintHTML()
++      .then(async (html) => {
++        popup.document.open();
++        popup.document.write(html);
++        popup.document.close();
++        await popup.document.fonts?.ready;
++        await Promise.all(
++          Array.from(popup.document.images).map((image) =>
++            image.decode?.().catch(() => {}),
++          ),
++        );
++        popup.focus();
++        popup.print();
++      })
++      .catch((error) => {
++        if (!popup.closed)
++          popup.document.body.textContent =
++            error instanceof Error ? error.message : String(error);
++        this.emit("printerror", { error });
++      });
++  }
+   private renderStories(): void {
+     if (!this._header || !this._footer || !this._footnotes) return;
+     const props = this._paginationDocument?.props || {},
+@@ -2082,6 +2783,7 @@ export function registerRichTextWeb(
+ ): void {
+   if (!registry) return;
+   const controls: Array<[string, CustomElementConstructor]> = [
++    ["rich-equation-editor", EquationEditor],
+     ["rich-text-box", RichTextBox],
+     ["flow-document-reader", FlowDocumentReader],
+     ["flow-document-scroll-viewer", FlowDocumentScrollViewer],
+diff --git a/src/engine-tree.ts b/src/engine-tree.ts
+index 1f75a40..89adaed 100644
+--- a/src/engine-tree.ts
++++ b/src/engine-tree.ts
+@@ -43,6 +43,7 @@ export function inlineText(node: DocumentNode): string {
+   if (node.type === "LineBreak") return "\n";
+   if (
+     [
++      "Equation",
+       "Image",
+       "InlineUIContainer",
+       "BlockUIContainer",
+@@ -107,6 +108,7 @@ export function leaves(root: DocumentNode): TextLeaf[] {
+       [
+         "Run",
+         "LineBreak",
++        "Equation",
+         "Image",
+         "InlineUIContainer",
+         "BlockUIContainer",
+@@ -140,7 +142,13 @@ export function sliceInlines(
+       if (copy.type === "Run") copy.text = (copy.text ?? "").slice(from, to);
+       else if (
+         copy.children &&
+-        !["InlineUIContainer", "Image", "Figure", "Floater"].includes(copy.type)
++        ![
++          "InlineUIContainer",
++          "Equation",
++          "Image",
++          "Figure",
++          "Floater",
++        ].includes(copy.type)
+       )
+         copy.children = sliceInlines(copy.children, from, to);
+       if (fresh) copy = newIds(copy);
+@@ -281,7 +289,7 @@ export function insertText(
+         if (node.type === "Hyperlink") wrappers.push(node);
+         if (
+           node.children &&
+-          !["Image", "InlineUIContainer"].includes(node.type)
++          !["Equation", "Image", "InlineUIContainer"].includes(node.type)
+         )
+           findWrapper(node.children, at - position);
+         break;
+@@ -342,9 +350,14 @@ export function formatRange(
+     if (base >= end || base + length <= start) return [node];
+     if (
+       node.type === "Run" ||
+-      ["Image", "InlineUIContainer", "LineBreak", "Figure", "Floater"].includes(
+-        node.type,
+-      )
++      [
++        "Equation",
++        "Image",
++        "InlineUIContainer",
++        "LineBreak",
++        "Figure",
++        "Floater",
++      ].includes(node.type)
+     ) {
+       const from = Math.max(0, start - base),
+         to = Math.min(length, end - base);
+diff --git a/src/engine.ts b/src/engine.ts
+index 14bb349..59ee161 100644
+--- a/src/engine.ts
++++ b/src/engine.ts
+@@ -1,4 +1,5 @@
+ import {
++  Equation,
+   EventDispatcher,
+   FlowDocument,
+   Run,
+@@ -105,6 +106,7 @@ const INLINE_TYPES = new Set([
+   "Underline",
+   "Hyperlink",
+   "LineBreak",
++  "Equation",
+   "Image",
+   "InlineUIContainer",
+   "Figure",
+@@ -1261,10 +1263,10 @@ export class RichTextEngine {
+       { Kind: "Formatting", Operation: "ClearFormatting" },
+     );
+   }
+-  InsertNode(node: DocumentNode): void {
+-    this.InsertFragment([node]);
++  InsertNode(node: DocumentNode): string {
++    return this.InsertFragment([node])[0];
+   }
+-  InsertFragment(nodes: DocumentNode[]): void {
++  InsertFragment(nodes: DocumentNode[]): string[] {
+     if (!Array.isArray(nodes))
+       throw new TypeError("InsertFragment expects an array of document nodes.");
+     const list = nodes.flatMap((node) =>
+@@ -1276,12 +1278,13 @@ export class RichTextEngine {
+       )
+     )
+       throw new Error("Only inline or block document nodes can be inserted.");
+-    if (!list.length) return;
++    if (!list.length) return [];
+     const allInline = list.every((node) => INLINE_TYPES.has(node.type));
+     if (!allInline && list.some((node) => INLINE_TYPES.has(node.type)))
+       throw new Error(
+         "A fragment must contain either inline nodes or block nodes.",
+       );
++    let insertedIds: string[] = [];
+     this.mutate(
+       (root) => {
+         const from = this.start,
+@@ -1290,6 +1293,7 @@ export class RichTextEngine {
+         deleteRange(root, from, to);
+         const block = pointBlock(root, Math.min(from, plainText(root).length));
+         const inserted = list.map(newIds);
++        insertedIds = inserted.map((node) => node.id);
+         if (block.node.type !== "Paragraph")
+           throw new Error(
+             "Select a text paragraph before inserting a fragment.",
+@@ -1355,6 +1359,55 @@ export class RichTextEngine {
+         Operation: "InsertFragment",
+       },
+     );
++    return insertedIds;
++  }
++  /** Insert vector-rendered mathematical content as a single undoable atom. */
++  InsertEquation(
++    source: string,
++    format: "latex" | "mathml" = "latex",
++    displayMode = false,
++  ): string {
++    const equation = new Equation(source, format, displayMode);
++    return this.InsertNode(equation.ToJSON());
++  }
++  UpdateEquation(
++    elementId: string,
++    source: string,
++    format: "latex" | "mathml" = "latex",
++    displayMode = false,
++  ): void {
++    const target = this.Document.FindById(elementId);
++    if (!target || target.Type !== "Equation")
++      throw new TypeError("The target equation does not exist.");
++    const checked = new Equation(source, format, displayMode);
++    this.BeginChange();
++    try {
++      this.SetElementProperty(elementId, "EquationSource", checked.Source);
++      this.SetElementProperty(elementId, "EquationFormat", checked.Format);
++      this.SetElementProperty(elementId, "DisplayMode", checked.DisplayMode);
++    } finally {
++      this.EndChange();
++    }
++  }
++  InsertPageBreak(): void {
++    this.BeginChange();
++    try {
++      this.InsertParagraph();
++      this.SetParagraphProperty("BreakPageBefore", true);
++      this.SetParagraphProperty("BreakColumnBefore", false);
++    } finally {
++      this.EndChange();
++    }
++  }
++  InsertColumnBreak(): void {
++    this.BeginChange();
++    try {
++      this.InsertParagraph();
++      this.SetParagraphProperty("BreakColumnBefore", true);
++      this.SetParagraphProperty("BreakPageBefore", false);
++    } finally {
++      this.EndChange();
++    }
+   }
+   InsertImage(
+     source: string,
+@@ -2174,6 +2227,25 @@ export class RichTextEngine {
+       case "numbering":
+       case "togglenumbering":
+         return this.ToggleList("Decimal");
++      case "insertequation":
++        return this.InsertEquation(
++          typeof parameter === "string"
++            ? parameter
++            : (parameter?.Source ?? "x"),
++          parameter?.Format ?? "latex",
++          parameter?.DisplayMode ?? false,
++        );
++      case "updateequation":
++        return this.UpdateEquation(
++          parameter?.ElementId ?? parameter?.Id,
++          parameter?.Source,
++          parameter?.Format,
++          parameter?.DisplayMode,
++        );
++      case "insertpagebreak":
++        return this.InsertPageBreak();
++      case "insertcolumnbreak":
++        return this.InsertColumnBreak();
+       case "insertimage":
+         return typeof parameter === "string"
+           ? this.InsertImage(parameter)
+diff --git a/src/equation-control.ts b/src/equation-control.ts
+new file mode 100644
+index 0000000..a53d2db
+--- /dev/null
++++ b/src/equation-control.ts
+@@ -0,0 +1,454 @@
++import {
++  renderEquation,
++  equationTokens,
++  replaceEquationToken,
++  EquationTemplates,
++  type EquationOptions,
++  type EquationRenderResult,
