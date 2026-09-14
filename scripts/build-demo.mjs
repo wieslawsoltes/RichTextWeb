@@ -95,5 +95,14 @@ await writeFile(
   "site/sample-dependencies.json",
   JSON.stringify(manifest, null, 2),
 );
+const packageInfo = JSON.parse(await readFile("package.json", "utf8"));
+await writeFile(
+  "site/build-info.json",
+  JSON.stringify(
+    { Version: packageInfo.version, Commit: process.env.GITHUB_SHA || null },
+    null,
+    2,
+  ),
+);
 await writeFile("site/.nojekyll", "");
 console.log("GitHub Pages sample built in site/.");
