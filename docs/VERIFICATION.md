@@ -1,46 +1,47 @@
 # Verification and measured performance
 
-Verification uses Node.js 24.19.0, TypeScript 7.0.2 and Chromium 153 on Linux/x64. GitHub Actions repeats package and browser checks on Node 22 and 24, executes shared native protocol checks on Linux, and builds and runs the WPF, WinUI and Avalonia sample hosts on Windows. Check the release commit's CI report for the final outcome; compilation and runtime execution are separate gates.
+## Release 0.4.0 qualification
 
-## Automated coverage
+The authoring implementation in [PR #16](https://github.com/wieslawsoltes/RichTextWeb/pull/16), following complete source recovery in [PR #15](https://github.com/wieslawsoltes/RichTextWeb/pull/15), passed **379 unit tests and 105 Chromium check groups** on both Node 22 and 24 in [CI run 34835483979](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34835483979). The same run passed installed-package checks, the shared C# protocol suite and actual WPF/WinUI/Avalonia applications on Windows. [Blazor run 34835484495](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34835484495) passed .NET 8 and .NET 10 package consumers in WebAssembly and Server hosting.
 
-The 0.3.0 release candidate passed **289 Node tests**, **87 real Chromium check groups**, and all four installed-consumer modes (ESM, CommonJS, strict TypeScript and standalone). CI repeats these checks on the exact release commit.
+These are checked-commit results. The release PR and merged release commit repeat qualification; read that commit's workflow result before attributing a later change to these results. Chromium was 153.0.8010.12 in the captured report. No local browser pass is claimed: the local environment blocks navigation, so browser and desktop runtime evidence comes from GitHub runners.
 
-The Node suites cover model ownership, dependency-property metadata and inheritance/coercion, live/snapshot positions and structural symbols, rich editing, patch history, observer failures, formatting/move/structural review, merged-cell geometry, rich concurrent operations, MVVM/React/bridge APIs, fields/notes/mail merge, format conversion, DOCX stories/native review/anchored text boxes, PDF flow export, and original PDF operator editing. The runner records the exact test count for each commit.
+## What is exercised
 
-Real Chromium checks include native typing, selection/caret, clipboard sanitation and stale asynchronous cut rejection, composition reconciliation, readonly guards, retained DOM identity, measured finite-page editing/navigation, columns, headers/footers/notes and overflow diagnostics. A 3,000-paragraph virtualization fixture verifies fewer than 60 retained paragraph elements, distant selection/edit/undo, complete native selection materialization and composition protection. Floating text-box stories, image handles, scoped rich editing, React Strict Mode, paginated React refs and MVVM document bindings exercise the shared controls.
+Model/engine suites cover ownership, dependency-property semantics, live/snapshot/symbol positions, Unicode editing, patches/history, observer failures, formatting/move/structural review, merged-cell operations, coauthoring, MVVM/React/bridge, fields/stories/notes/mail merge, formats and PDF operators.
 
-The sample checks instantiate all seven requested published libraries, execute RibbonWeb commands, edit through reusable toolbar dialogs, filter the TreeDataGrid through ReactiveWeb/DynamicData, float/dock the actual editor without losing history, traverse QuikGraph reference edges, query RBush bounds, inspect/reject formatting review, and verify dark/mobile layouts. Rich collaboration browser checks merge offline/reordered paragraphs, text, tables and images, then checkpoint both live controls. PDF checks exercise canvas/text search, original-source replacement/undo, overlays, page organization, reconstructed typing and Unicode reflow export.
+Equation suites cover safe TeX/MathML vector rendering, templates, native Office Math conversion, vector PDF paths, atomic model positions, source validation, rectangular matrix edits, fixed-arity token edits, format conversion, draft preservation, history and read-only behavior. Unsupported conversion must fail without losing the original source.
 
-Package tests install the actual npm tarball into an isolated application. ESM, CommonJS, strict TypeScript and standalone consumers exercise shared constructors, the page editor, React typed refs and virtualization props, Figure/Floater interchange, dependency-property coercion/read-only keys, rich coauthoring/checkpoints and original PDF replacement followed by saving and reopening. The standalone main/PDF bundle combination is also tested in the browser.
+Real browser checks cover physical page versus column breaks in one/two/three-column documents, all five document views, all four page arrangements, viewport fitting, selection-preserving cache reuse and caret editing. Browser-generated PDFs are parsed independently to compare page counts with measured sheets and selected page ranges. Small-zoom multi-page fixtures require every visible sheet to be realized before overscan, and numeric navigation goes directly to a selected sheet.
 
-Native PR #8 passed **10 WPF/WebView2, 11 WinUI/WebView2 and 11 Avalonia NativeWebView checks** in [Windows CI run 34758192244](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34758192244). The release pipeline repeats these gates for the final feature commit.
+The reusable math dialog tests insert/edit/apply/cancel equations, edit matrix rows and columns, convert MathML back to LaTeX, preserve immediate source drafts, and invoke Alt+=. A regression closes and reopens equation dialogs five times in one task; delayed close events must dispose only retired workbenches, never the active editor. The original failing interaction is retained in the suite.
 
-The Windows smoke applications exercise real native WebView controls: handshake, editing/selection/formatting, undo/redo, DOM output, MVVM notifications, readonly policy, stale revision rejection, document features and tracked-change rejection. WPF captures PNG evidence; WinUI captures a native WebView2 PNG; Avalonia prints the rendered WebView to PDF. Successful JSON reports are required before packaging. The shared C# tests use controlled transports and the actual JavaScript engine, and exercise the loopback asset server. The pinned Avalonia.Controls.WebView 11.4.0 dependency is MIT licensed.
+Browser regressions also exercise native typing, caret/selection, clipboard sanitation and stale asynchronous cut rejection, composition reconciliation, read-only guards, retained DOM identity, floating stories/handles and React Strict Mode. A 3,000-paragraph continuous virtualization fixture verifies fewer than 60 realized paragraph elements and distant edit/undo. Rich coauthoring uses paused/reversed delivery and acknowledged checkpoints.
 
-Advanced DOCX fixtures are checked both with the engine's hash-bound extension and with that extension removed to exercise native XML import. PDF fixtures include independently generated ReportLab content and PDF.js extraction/rendering; operator checks cover encodings, text advance, nested/shared Forms and unsupported-input diagnostics.
+The sample instantiates all seven requested ecosystem libraries, routes ribbon/toolbar commands to the shared engine, filters a real TreeDataGrid, docks/floats the actual editor without losing history, traverses QuikGraph references, queries RBush bounds and inspects/rejects tracked formatting. Captured desktop, dark and mobile layouts are checked for readability and horizontal overflow. PDF control tests exercise source edits/undo, page organization, overlays, search, reconstruction and reflow export.
 
-Run `npm run check`, then `npm run test:browser` after installing Chromium. `test-results/browser.json` records grouped results and the browser version; CI uploads screenshots, benchmark observations and native evidence. Release archives retain native application/package artifacts and their qualification reports.
+Installed-consumer tests inspect the actual npm tarball and exercise ESM, CommonJS, strict TypeScript and standalone bundles. Native checks distinguish builds from execution: WPF/WinUI capture rendered PNGs and Avalonia produces a rendered PDF; JSON success reports are required. Blazor tests consume actual NuGet packages and exercise EditForm notifications, full binding values, formats/PDF and remounting. The existing public Blazor version is independently versioned; a source/CI build is not a new NuGet publication.
 
-## Performance observation
+## Reproduce and inspect
 
-Workload: 1,000 paragraphs and 80,892 UTF-16 code units on the local Intel Xeon Platinum 8573C. Medians use three repetitions, five for insertion/search and one for binary exports. This is a local wall-clock observation, including undo where named; it is not a device latency guarantee. A second run under concurrent build load measured 24.0 ms construction, 34.0 ms insert/undo and 123.7 ms format/undo, illustrating workload sensitivity.
+```sh
+npm ci
+npm run check
+npx playwright install --with-deps chromium
+npm run test:browser
+node scripts/benchmark.mjs --json
+# Same deployed-sample checks, with local source only for isolated React fixtures:
+BROWSER_TEST_URL=https://wieslawsoltes.github.io/RichTextWeb/ npm run test:browser
+```
 
-| Operation                       | Observed time |
-| ------------------------------- | ------------: |
-| Construct model and ID index    |       11.2 ms |
-| Serialize canonical JSON        |        0.7 ms |
-| Parse canonical JSON            |        7.9 ms |
-| Insert five characters and undo |       28.8 ms |
-| Find all 1,000 matches          |        0.4 ms |
-| Format 100 characters and undo  |       65.2 ms |
-| Export HTML                     |        2.6 ms |
-| Export Markdown                 |        0.8 ms |
-| Export DOCX                     |      116.3 ms |
-| Export PDF                      |      118.4 ms |
+CI artifacts contain `test-results/browser.json`, screenshots, benchmark observations, native reports and packaged desktop samples. After deployment, the Pages gate first verifies `build-info.json` against the exact version and commit, then runs the browser suite against the public sample before npm publication. Registry verification downloads and compares the immutable release tarball with published npm bytes.
 
-A separate regression edits a 200,000-character Run, verifies retained undo below 1.5 KB, and preserves the original Run/Paragraph objects through undo/redo. Common untracked single-Run typing avoids whole-document serialization; structural edits and symbol/index maintenance can still traverse document-size data. Continuous block virtualization limits retained DOM, while finite page measurement materializes the complete flow. `node scripts/benchmark.mjs --json` provides the repeatable workload. CI records observations for the release commit without enforcing machine-dependent timing thresholds.
+## Performance observations, not guarantees
+
+On the PR #16 Node 24.20.0 Linux/x64 AMD EPYC 9V74 runner, the repeatable 1,000-paragraph/80,892-UTF-16-unit workload measured median construction at **14.692 ms**, serialization **0.835 ms**, insertion of five characters plus undo **31.219 ms**, finding 1,000 matches **0.367 ms**, and formatting 100 characters plus undo **77.249 ms**. See the run's `benchmark.json` for repetitions and ranges. These are runner observations, not device latency targets or evidence of Word-identical layout.
+
+Finite pages still measure the whole body and clone body content for mirrors. Visible-first realization, cached geometry and binary offset lookup reduce avoidable work but do not establish full incremental layout virtualization. Structural edits and index rebuilding can scale with document size.
 
 ## Remaining qualification
 
-Exact Word render comparison, exhaustive WPF/native API conformance, Avalonia runtime execution on macOS/Linux, physical mobile/stylus input, actual OS IMEs, screen readers, Firefox/WebKit, production collaboration storage/transport and arbitrary third-party Office/PDF corpora need separate qualification. Browser pagination, browser print and direct PDF generation remain different layout paths. Repository tests establish the documented behavior for the tested environments, rather than complete Microsoft-engine parity.
+Exact Word render comparisons, exhaustive WPF APIs, arbitrary third-party Office/PDF corpora, all Word math/field grammars, Firefox/WebKit, non-Windows Avalonia runtimes, actual OS IMEs, physical devices/screen readers and production collaboration services need additional implementation or qualification. See [the compatibility matrix](COMPATIBILITY.md) for the distinction between supported behavior and remaining boundaries.
