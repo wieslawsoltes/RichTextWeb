@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0
+
+- Recover and commit the complete paginated authoring/equation implementation as ordinary source, tests, adapters and sample files (PR #15).
+- Add Print Layout, Web Layout, Read Mode, Outline and Draft; single/two/vertical/multiple-page arrangements; viewport-aware fitting, numeric navigation and cached geometry.
+- Align physical page breaks across columns, stop column breaks leaking into continuation paragraphs, retain continuous-view keyboard scrolling and print measured page ranges without a trailing blank sheet.
+- Add atomic Equation nodes with editable LaTeX/MathML, bounded private MathJax SVG rendering, 42 templates, native Office Math interchange and vector PDF export.
+- Extend the reusable equation workbench with token insertion/deletion, matrix row/column editing, immutable structural APIs, safe bidirectional format switching, immediate draft values and Alt+= integration.
+- Isolate each toolbar dialog session so queued close events cannot dispose a newly opened workbench (PR #16).
+- Prioritize visible sheets before overscan and use binary page-offset lookup; retain explicit bounds instead of claiming full finite-page virtualization.
+- Polish sample page/view controls, paper settings, panel overflow, responsive layouts and equation/pagination examples; keep actions in shared controls and engine APIs.
+- Add deployment version/commit metadata and a post-deployment browser gate before npm publication.
+- Validate 379 unit tests and 105 Chromium groups, installed ESM/CJS/TypeScript/browser consumers, Windows WPF/WinUI/Avalonia runtimes and Blazor .NET 8/10 consumers. Native adapter archives use 0.4.0; the independently versioned public Blazor package is unchanged.
+
+See [authoring](docs/AUTHORING.md) and [compatibility](docs/COMPATIBILITY.md) for supported structures and the remaining Word/WPF layout, semantic and runtime boundaries.
+
 ## 0.3.0
 
 - Editable finite-page control with page/column navigation, floating Figure/Floater rich stories, anchored images and move/resize handles.
