@@ -6,6 +6,7 @@ Reusable rich-text engine, flow documents, browser controls, document formats an
 [![npm downloads](https://img.shields.io/npm/dm/%40wieslawsoltes%2Frichtextweb)](https://www.npmjs.com/package/@wieslawsoltes/richtextweb)
 [![NuGet](https://img.shields.io/nuget/v/RichTextWeb.Blazor)](https://www.nuget.org/packages/RichTextWeb.Blazor)
 [![NuGet downloads](https://img.shields.io/nuget/dt/RichTextWeb.Blazor)](https://www.nuget.org/packages/RichTextWeb.Blazor)
+[![CI](https://github.com/wieslawsoltes/RichTextWeb/actions/workflows/ci.yml/badge.svg)](https://github.com/wieslawsoltes/RichTextWeb/actions/workflows/ci.yml)
 [![Blazor CI](https://github.com/wieslawsoltes/RichTextWeb/actions/workflows/blazor.yml/badge.svg)](https://github.com/wieslawsoltes/RichTextWeb/actions/workflows/blazor.yml)
 
 ## JavaScript and desktop adapters
@@ -15,6 +16,41 @@ npm install @wieslawsoltes/richtextweb
 ```
 
 The [complete original guide](README.web.md) preserves JavaScript/React/MVVM usage, desktop adapters, architecture, tests, compatibility matrices and licensing. [Open the web demo](https://wieslawsoltes.github.io/RichTextWeb/).
+
+## Paginated authoring and equations — 0.4.0
+
+The recovered implementation is committed as actual source in [PR #15](https://github.com/wieslawsoltes/RichTextWeb/pull/15). [PR #16](https://github.com/wieslawsoltes/RichTextWeb/pull/16) adds structural equation editing and fixes page navigation, column-break continuation, equation draft conversion and immediate dialog reopening.
+
+`RichTextPageEditor` supports Print Layout, Web Layout, Read Mode, Outline and Draft; single-page, two-page, vertical and multiple-page arrangements; page-width/whole-page fitting; physical page and column breaks; cached measurements; and printing of measured page ranges. The sample exposes these through the View ribbon and status bar.
+
+`Equation` nodes retain editable LaTeX or presentation MathML and render to self-contained SVG. The reusable equation workbench includes 42 templates, token editing, fraction/root/script tools, matrix rows/columns, format conversion, alternative text and undo/redo. Insert/Edit Equation and Alt+= use the same toolbar and engine commands. Supported equations round-trip through native DOCX Office Math and export to vector PDF.
+
+```html
+<rich-text-toolbar for="document"></rich-text-toolbar>
+<rich-text-page-editor
+  id="document"
+  document-view="PrintLayout"
+  page-arrangement="Vertical"
+  zoom-mode="PageWidth"
+></rich-text-page-editor>
+```
+
+```js
+import {
+  registerRichTextWeb,
+  registerRichTextToolbar,
+} from "@wieslawsoltes/richtextweb/web";
+registerRichTextWeb();
+registerRichTextToolbar();
+const editor = document.querySelector("#document");
+editor.Engine.InsertEquation(
+  String.raw`x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}`,
+  "latex",
+  true,
+);
+```
+
+See [authoring/equation APIs](docs/AUTHORING.md), [verified coverage](docs/VERIFICATION.md), and the [compatibility matrix](docs/COMPATIBILITY.md). Browser pagination is not Word-identical, finite-page layout still measures the complete document, and Word/WPF/math semantics are not exhaustive. The release candidate passed 379 unit tests and 105 Chromium groups, plus installed-package, Windows desktop and Blazor consumer checks.
 
 ## Blazor
 
