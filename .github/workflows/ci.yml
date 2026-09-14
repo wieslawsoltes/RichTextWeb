@@ -93,8 +93,55 @@ jobs:
       - name: Deploy sample
         id: deployment
         uses: actions/deploy-pages@v5
+  pages-smoke:
+    needs: pages
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Wait for this exact deployment
+        env:
+          BROWSER_TEST_URL: https://wieslawsoltes.github.io/RichTextWeb/
+        run: |
+          node --input-type=module <<'JS'
+          import { readFile } from 'node:fs/promises';
+          import assert from 'node:assert/strict';
+          const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+          let matched = false;
+          for (let attempt = 0; attempt < 30; attempt++) {
+            try {
+              const url = new URL('build-info.json', process.env.BROWSER_TEST_URL);
+              url.searchParams.set('commit', process.env.GITHUB_SHA);
+              url.searchParams.set('attempt', String(attempt));
+              const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+              if (response.ok) {
+                const data = await response.json();
+                if (data.Version === version && data.Commit === process.env.GITHUB_SHA) { matched = true; break; }
+              }
+            } catch (error) { console.log(error.message); }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+          assert(matched, 'GitHub Pages did not serve the checked release commit within the bounded wait');
+          JS
+      - name: Exercise the public sample
+        env:
+          BROWSER_TEST_URL: https://wieslawsoltes.github.io/RichTextWeb/
+        run: npm run test:browser
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-pages-verification
+          path: test-results/
+          if-no-files-found: warn
   release:
-    needs: package
+    needs: [package, pages-smoke]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
