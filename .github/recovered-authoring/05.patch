@@ -1,0 +1,379 @@
+             t("PagePreview", "Page preview", "print", {
+               ...large,
+               mutates: false,
+@@ -487,7 +492,15 @@ export function createDocumentRibbon({
+               { mutates: false },
+             ),
+           ]),
+-          group("display", "Display", [
++          group("page-movement", "Page movement", [
++            app("single-page", "One page", "page", { mutates: false }),
++            app("two-pages", "Two pages", "slides", { mutates: false }),
++            app("vertical-pages", "Vertical", "list", { mutates: false }),
++            app("multiple-pages", "Multiple pages", "grid", { mutates: false }),
++          ]),
++          group("display", "Zoom", [
++            app("fit-width", "Page width", "full", { mutates: false }),
++            app("fit-page", "Whole page", "page", { mutates: false }),
+             app("zoom-reset", "100%", "search", { mutates: false }),
+             app("theme", "Dark / light", "◐", { mutates: false }),
+             b(
+diff --git a/sample/word-workspace.css b/sample/word-workspace.css
+index f5b2d53..33bbacd 100644
+--- a/sample/word-workspace.css
++++ b/sample/word-workspace.css
+@@ -388,3 +388,115 @@ body.dark #document-graph {
+     display: inline-block;
+   }
+ }
++
++/* Keep every docked panel usable at small heights and prevent cross-panel overflow. */
++#editor {
++  display: flex;
++  flex-direction: column;
++}
++.statusbar {
++  gap: 10px;
++  overflow: hidden;
++}
++.statusbar select {
++  font:
++    11px/1.2 "Segoe UI",
++    system-ui;
++  max-width: 120px;
++  height: 23px;
++  padding: 1px 4px;
++  border: 1px solid var(--line);
++  border-radius: 3px;
++  background: var(--chrome);
++  color: var(--ink);
++}
++#view-toggle {
++  display: none;
++}
++#docking-workspace .ad-content,
++#docking-workspace .ad-pane-content,
++#inspector-content {
++  min-width: 0;
++  min-height: 0;
++}
++#inspector-content {
++  overflow: auto;
++  overscroll-behavior: contain;
++}
++.inspector-tabs {
++  position: sticky;
++  top: 0;
++  flex-shrink: 0;
++  background: var(--chrome);
++  z-index: 1;
++}
++.catalog-detail {
++  overflow: auto;
++  max-height: 30%;
++  overflow-wrap: anywhere;
++}
++#document-grid {
++  min-height: 60px;
++}
++.explorer-heading,
++.explorer-controls,
++.explorer-actions,
++.graph-actions {
++  flex-shrink: 0;
++}
++.all-tools-panel {
++  overflow: auto;
++  overscroll-behavior: contain;
++}
++.page-preview-dialog {
++  max-width: 96vw;
++  max-height: 94dvh;
++  padding: 14px;
++  overflow: hidden;
++}
++.page-preview-dialog flow-document-page-viewer {
++  height: calc(88dvh - 60px);
++  min-height: 0;
++}
++.dark .statusbar select {
++  background: var(--chrome);
++  color: var(--ink);
++}
++@media (max-width: 1100px) {
++  #selection-status,
++  #show-navigation span {
++    display: none;
++  }
++  .statusbar {
++    gap: 7px;
++  }
++  .statusbar select {
++    max-width: 104px;
++  }
++  #editor-mode {
++    display: none;
++  }
++}
++@media (max-width: 700px) {
++  #word-count,
++  #page-arrangement,
++  #fit-page {
++    display: none;
++  }
++  .statusbar select {
++    max-width: 102px;
++  }
++  .statusbar {
++    gap: 5px;
++  }
++  #zoom {
++    width: 68px;
++  }
++  .titlebar {
++    gap: 8px;
++    padding: 0 10px;
++  }
++  .page-preview-dialog {
++    padding: 8px;
++  }
++}
+diff --git a/sample/word-workspace.js b/sample/word-workspace.js
+index b9ae875..f87bd19 100644
+--- a/sample/word-workspace.js
++++ b/sample/word-workspace.js
+@@ -41,6 +41,15 @@ import { createDocumentRibbon } from "./word-ribbon.js";
+ import "./word-workspace.css";
+ 
+ const passive = new Set([
++  "read-mode",
++  "outline-view",
++  "draft-view",
++  "fit-width",
++  "fit-page",
++  "two-pages",
++  "single-page",
++  "vertical-pages",
++  "multiple-pages",
+   "quick-save",
+   "save",
+   "open",
+@@ -810,7 +819,7 @@ export function createWordWorkspace(hooks) {
+   editor.EnableVirtualization = true;
+   editor.VirtualizationThreshold = 120;
+   editor.addEventListener("pagechange", Refresh);
+-  editor.addEventListener("paginationchange", Refresh);
++  editor.addEventListener("paginated", Refresh);
+   editor.addEventListener("scroll", updateSpatial, true);
+   editor.addEventListener("pointerdown", (event) => {
+     if (!event.altKey) return;
+diff --git a/scripts/browser-test.mjs b/scripts/browser-test.mjs
+index 6724bba..3ff6ae4 100644
+--- a/scripts/browser-test.mjs
++++ b/scripts/browser-test.mjs
+@@ -10,6 +10,7 @@ import { runPDFBrowserChecks } from "../tests/pdf.browser.mjs";
+ import { runLayoutBrowserChecks } from "../tests/layout.browser.mjs";
+ import { runWorkspaceBrowserChecks } from "../tests/workspace.browser.mjs";
+ import { runRichCollaborationBrowserChecks } from "../tests/collaboration.browser.mjs";
++import { runAuthoringBrowserChecks } from "../tests/authoring.browser.mjs";
+ const port = process.env.PORT || "4190";
+ const external = process.env.BROWSER_TEST_URL;
+ const base = external || `http://127.0.0.1:${port}`;
+@@ -72,6 +73,7 @@ try {
+         )),
+   );
+   results.push(...(await runLayoutBrowserChecks(page)));
++  results.push(...(await runAuthoringBrowserChecks(page)));
+   results.push(...(await runWorkspaceBrowserChecks(page)));
+   results.push(...(await runRichCollaborationBrowserChecks(page)));
+   const reactResults = await runReactBrowserChecks(page);
+diff --git a/scripts/build-demo.mjs b/scripts/build-demo.mjs
+index dcefd38..cf0b0ee 100644
+--- a/scripts/build-demo.mjs
++++ b/scripts/build-demo.mjs
+@@ -1,5 +1,6 @@
+ import { build } from "esbuild";
+-import { mkdir, cp, writeFile, readFile } from "node:fs/promises";
++import { mkdir, cp, writeFile, readFile, rm } from "node:fs/promises";
++await rm("site", { recursive: true, force: true });
+ await mkdir("site", { recursive: true });
+ await cp("sample", "site", { recursive: true });
+ await build({
+@@ -30,7 +31,7 @@ await cp(
+   "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+   "site/pdf-assets/pdf.worker.mjs",
+ );
+-for (const directory of ["cmaps", "standard_fonts", "wasm", "iccs"])
++for (const directory of ["cmaps", "wasm", "iccs"])
+   await cp(
+     `node_modules/pdfjs-dist/${directory}`,
+     `site/pdf-assets/${directory}`,
+@@ -72,6 +73,24 @@ manifest.push({
+   License: "Apache-2.0",
+   LicenseFile: "licenses/rxjs.txt",
+ });
++for (const [name, license] of [
++  ["mathjax-full", "Apache-2.0"],
++  ["mhchemparser", "Apache-2.0"],
++]) {
++  await cp(
++    `node_modules/${name}/${name === "mhchemparser" ? "LICENSE.txt" : "LICENSE"}`,
++    `site/licenses/${name}.txt`,
++  );
++  const metadata = JSON.parse(
++    await readFile(`node_modules/${name}/package.json`, "utf8"),
++  );
++  manifest.push({
++    Name: name,
++    Version: metadata.version,
++    License: license,
++    LicenseFile: `licenses/${name}.txt`,
++  });
++}
+ await writeFile(
+   "site/sample-dependencies.json",
+   JSON.stringify(manifest, null, 2),
+diff --git a/scripts/build.mjs b/scripts/build.mjs
+index 458522e..3267e9e 100644
+--- a/scripts/build.mjs
++++ b/scripts/build.mjs
+@@ -41,6 +41,37 @@ await build({
+   sourcemap: true,
+   legalComments: "linked",
+ });
++// Preserve public constructor identity while privately bundling the audited math renderer.
++// Neither MathJax's speech-rule engine nor its XML dependencies belong in consumers.
++for (const format of ["esm", "cjs"]) {
++  const math = await build({
++    entryPoints: ["src/equations.ts"],
++    outfile: `dist/${format}/equations.js`,
++    bundle: true,
++    format,
++    platform: "browser",
++    target: "es2022",
++    minify: true,
++    sourcemap: true,
++    legalComments: "linked",
++    metafile: true,
++    external: ["./formats-markup.js", "./model.js"],
++  });
++  if (
++    Object.keys(math.metafile.inputs).some((path) =>
++      /speech-rule-engine|xmldom/.test(path),
++    )
++  )
++    throw new Error(
++      "Unexpected speech/XML dependency in the equation renderer",
++    );
++}
++await mkdir("dist/licenses", { recursive: true });
++await cp("node_modules/mathjax-full/LICENSE", "dist/licenses/mathjax.txt");
++await cp(
++  "node_modules/mhchemparser/LICENSE.txt",
++  "dist/licenses/mhchemparser.txt",
++);
+ await writeFile("dist/cjs/package.json", JSON.stringify({ type: "commonjs" }));
+ await build({
+   entryPoints: ["src/pdf.ts"],
+@@ -58,7 +89,7 @@ await cp(
+   "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+   "dist/pdf-assets/pdf.worker.mjs",
+ );
+-for (const directory of ["cmaps", "standard_fonts", "wasm", "iccs"])
++for (const directory of ["cmaps", "wasm", "iccs"])
+   await cp(
+     `node_modules/pdfjs-dist/${directory}`,
+     `dist/pdf-assets/${directory}`,
+diff --git a/scripts/package-test.mjs b/scripts/package-test.mjs
+index 61ab41c..8f9cb59 100644
+--- a/scripts/package-test.mjs
++++ b/scripts/package-test.mjs
+@@ -108,6 +108,15 @@ try {
+     "dist/types/pdf-operators.d.ts",
+   ])
+     assert.ok(files.has(file), `Missing published file: ${file}`);
++  assert.ok(
++    !manifest.dependencies?.["mathjax-full"],
++    "Math renderer must be privately bundled",
++  );
++  for (const path of files)
++    assert.ok(
++      !/\.(?:ttf|otf|woff2?|pfb)$/i.test(path),
++      `Do not distribute font binaries: ${path}`,
++    );
+   for (const path of files)
+     assert.ok(
+       !/(^|\/)(node_modules|\.git|\.env)(\/|$)/.test(path),
+@@ -166,6 +175,14 @@ assert.equal(root.ObservableObject, mvvm.ObservableObject, 'root/mvvm must share
+ assert.equal(root.RichTextWebBridge, bridge.RichTextWebBridge, 'root/bridge must share bridge constructors');
+ assert.ok(react.RichTextEditor, 'optional React component must import');
+ assert.equal(root.DocumentFeatures, features.DocumentFeatures);
++assert.equal(root.Equation, core.Equation);
++const math = root.renderEquation({Source:'\\\\frac{a}{b}',DisplayMode:true});
++assert.match(math.SVG, /<path/); assert.match(math.MathML, /mfrac/);
++const equation = new core.Equation('x^2');
++const equationDocument = new core.FlowDocument(new core.Paragraph(equation));
++assert.equal(equationDocument.Text, '\uFFFC');
++assert.ok(formats.fromHTML(formats.toHTML(equationDocument)).Blocks.Get(0).Inlines.Get(0) instanceof core.Equation);
++
+ assert.equal(root.CollaborativeTextSession, collaboration.CollaborativeTextSession);
+ assert.equal(root.RichTextToolbar, web.RichTextToolbar);
+ assert.equal(typeof pdf.fromPDF, 'function');
+diff --git a/src/bridge.ts b/src/bridge.ts
+index ea0de26..30159b9 100644
+--- a/src/bridge.ts
++++ b/src/bridge.ts
+@@ -194,6 +194,7 @@ const nodeTypes = new Set([
+   "InlineUIContainer",
+   "BlockUIContainer",
+   "Image",
++  "Equation",
+   "Figure",
+   "Floater",
+ ]);
+diff --git a/src/collaboration-document.ts b/src/collaboration-document.ts
+index 86a2e13..c57eedd 100644
+--- a/src/collaboration-document.ts
++++ b/src/collaboration-document.ts
+@@ -216,6 +216,7 @@ function compatible(
+     "Underline",
+     "Hyperlink",
+     "LineBreak",
++    "Equation",
+     "Image",
+     "InlineUIContainer",
+     "Figure",
+@@ -563,6 +564,7 @@ export class CollaborativeDocumentSession {
+         ![
+           "Run",
+           "LineBreak",
++          "Equation",
+           "Image",
+           "InlineUIContainer",
+           "BlockUIContainer",
+diff --git a/src/control-renderer.ts b/src/control-renderer.ts
+index 8c8f8c3..827cd2c 100644
+--- a/src/control-renderer.ts
++++ b/src/control-renderer.ts
+@@ -1,3 +1,4 @@
++import { renderEquation, equationOptions } from "./equations.js";
+ import type { DocumentNode, TextElement } from "./model.js";
+ import type { VirtualWindow } from "./virtualization.js";
+ 
+@@ -41,6 +42,7 @@ const renderedProperties = [
+   "Width",
+   "Height",
+   "BreakPageBefore",
++  "BreakColumnBefore",
+   "KeepTogether",
+   "KeepWithNext",
+   "Widows",
+@@ -249,8 +251,13 @@ export function thicknessCSS(value: unknown): string | undefined {
+       .trim()
+       .split(/[\s,]+/)
+       .map(cssLength);
+-    if (parts.length > 0 && parts.length <= 4 && parts.every(Boolean))
++    if (parts.length > 0 && parts.length <= 4 && parts.every(Boolean)) {
++      if (value.includes(",") && parts.length === 4)
++        return [parts[1], parts[2], parts[3], parts[0]].join(" ");
++      if (value.includes(",") && parts.length === 2)
