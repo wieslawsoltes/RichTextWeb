@@ -1,0 +1,21 @@
+name: Archive recovered authoring source
+on:
+  push:
+    branches: [recovery/authoring-archive]
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Archive tracked files without executing recovered content
+        run: git archive --format=tar.gz HEAD -o recovered-source.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: recovered-source
+          path: recovered-source.tar.gz
+          retention-days: 3
