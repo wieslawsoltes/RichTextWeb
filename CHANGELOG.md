@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- Replace flattening header/footer forms with reusable rich-text controls; preserve formatting, fields, tables, images and equations. Add first/even-page ribbon commands and double-click editing of rendered stories.
+- Add DOM-independent DocumentStorySession with isolated drafts/history, cancel, same-story conflict detection, optional Section scoping and a single parent undo operation.
+- Add validated SetPageSetup commands with per-side margins, columns/gaps, story distances, page-number starts and variant flags, without resetting unrelated state.
+- Honor native first/even-page switches, intentional blank variants, and header/footer distances in screen/print and DOCX.
+- Support WPF preferred/fixed ColumnWidth semantics and export measured column counts/gaps/right padding to DOCX.
+- Virtualize page container slots in Vertical/MultiplePages, pin the live editor, and retain cached geometry during distant navigation. Full-body measurement/mirror costs remain documented.
+- Add 26 unit regressions and seven real-browser groups, including rich story typing and navigation to page 480 of a 500-page fixture.
+- Version npm and native archives as 0.5.0; retain the independently versioned Blazor package. Continue exact-commit Pages, native and installed-package release gates.
+
 ## 0.4.0
 
 - Recover and commit the complete paginated authoring/equation implementation as ordinary source, tests, adapters and sample files (PR #15).

@@ -1095,10 +1095,10 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     const columnWidths = Array.isArray(p.ColumnWidths)
       ? p.ColumnWidths.map(
           (w: number) =>
-            `<w:col w:w="${pxToTwip(w)}" w:space="${pxToTwip(p.ColumnGap ?? 24)}"/>`,
+            `<w:col w:w="${pxToTwip(w)}" w:space="${pxToTwip(geometry.ColumnGap)}"/>`,
         ).join("")
       : "";
-    return `<w:sectPr>${refs}${p.SectionBreak ? `<w:type w:val="${esc(p.SectionBreak)}"/>` : ""}<w:pgSz w:w="${pxToTwip(geometry.PageWidth)}" w:h="${pxToTwip(geometry.PageHeight)}"${p.PageOrientation ? ` w:orient="${esc(String(p.PageOrientation).toLowerCase())}"` : ""}/><w:pgMar w:top="${pxToTwip(margins.Top)}" w:right="${pxToTwip(margins.Right)}" w:bottom="${pxToTwip(margins.Bottom)}" w:left="${pxToTwip(margins.Left)}" w:header="${pxToTwip(p.HeaderDistance ?? 8)}" w:footer="${pxToTwip(p.FooterDistance ?? 8)}" w:gutter="${pxToTwip(p.Gutter ?? 0)}"/><w:cols w:num="${Math.max(1, Number(p.ColumnCount) || 1)}" w:space="${pxToTwip(p.ColumnGap ?? 24)}"${columnWidths ? ' w:equalWidth="0"' : ""}>${columnWidths}</w:cols>${pageStoryVariantEnabled(p, "FirstPage") ? "<w:titlePg/>" : ""}${p.PageNumberStart ? `<w:pgNumType w:start="${Number(p.PageNumberStart)}"/>` : ""}</w:sectPr>`;
+    return `<w:sectPr>${refs}${p.SectionBreak ? `<w:type w:val="${esc(p.SectionBreak)}"/>` : ""}<w:pgSz w:w="${pxToTwip(geometry.PageWidth)}" w:h="${pxToTwip(geometry.PageHeight)}"${p.PageOrientation ? ` w:orient="${esc(String(p.PageOrientation).toLowerCase())}"` : ""}/><w:pgMar w:top="${pxToTwip(margins.Top)}" w:right="${pxToTwip(margins.Right)}" w:bottom="${pxToTwip(margins.Bottom)}" w:left="${pxToTwip(margins.Left)}" w:header="${pxToTwip(p.HeaderDistance ?? 8)}" w:footer="${pxToTwip(p.FooterDistance ?? 8)}" w:gutter="${pxToTwip(p.Gutter ?? 0)}"/><w:cols w:num="${geometry.ColumnCount}" w:space="${pxToTwip(geometry.ColumnGap)}"${columnWidths ? ' w:equalWidth="0"' : ""}>${columnWidths}</w:cols>${pageStoryVariantEnabled(p, "FirstPage") ? "<w:titlePg/>" : ""}${p.PageNumberStart ? `<w:pgNumType w:start="${Number(p.PageNumberStart)}"/>` : ""}</w:sectPr>`;
   };
   const content = blocks(tableReviewChildren(root), root.props),
     sectPr = sectionProperties(root.props);

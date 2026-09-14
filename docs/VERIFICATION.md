@@ -1,5 +1,15 @@
 # Verification and measured performance
 
+## Release 0.5.0 qualification
+
+[PR #19](https://github.com/wieslawsoltes/RichTextWeb/pull/19) passed **404 unit tests and 112 Chromium groups** on Node 22/24 in [CI run 34882583486](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34882583486). The run also passed installed-package checks, the shared C# protocol suite and real WPF/WinUI/Avalonia Windows applications. [Blazor run 34882583978](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34882583978) passed .NET 8/10 WebAssembly and Server package consumers.
+
+The release adds a native DOCX geometry regression (**405 unit tests**) and aligns exported column count/gap with the browser's preferred/fixed column calculation. Build, TypeScript and unit tests pass locally. The release PR and merged release commit repeat all CI gates; publication additionally requires exact-commit live Pages checks and downloaded npm-tarball verification. Local browser navigation remains restricted, so Chromium/native runtime evidence comes from CI rather than a claimed local browser pass.
+
+New regressions preserve formatting/fields/equations during actual rich-header typing, verify one parent undo step and non-mutating cancel, reject conflicting footer changes, double-click the rendered page story, validate per-side margins and impossible columns in the modal, and check first/even flags, page-number starts, header distances and fixed-width columns. A 500-page fixture requires fewer than 40 page slots, navigates to page 480, verifies the live page is visible with no blank realized neighbors, and checks that navigation does not remeasure the body. Native DOCX tests inspect `w:cols`, margins and first/even-page flags rather than only library metadata.
+
+The 0.4.0 baseline was already fully recovered, committed and published. The remaining boundaries in [COMPATIBILITY.md](COMPATIBILITY.md) and [PAGE-AUTHORING.md](PAGE-AUTHORING.md) still apply: bounded page-container DOM is not a claim of a fully virtualized layout engine, and exact Word pagination remains unqualified.
+
 ## Release 0.4.0 qualification
 
 The authoring implementation in [PR #16](https://github.com/wieslawsoltes/RichTextWeb/pull/16), following complete source recovery in [PR #15](https://github.com/wieslawsoltes/RichTextWeb/pull/15), passed **379 unit tests and 105 Chromium check groups** on both Node 22 and 24 in [CI run 34835483979](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34835483979). The same run passed installed-package checks, the shared C# protocol suite and actual WPF/WinUI/Avalonia applications on Windows. [Blazor run 34835484495](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34835484495) passed .NET 8 and .NET 10 package consumers in WebAssembly and Server hosting.

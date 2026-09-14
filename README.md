@@ -17,6 +17,25 @@ npm install @wieslawsoltes/richtextweb
 
 The [complete original guide](README.web.md) preserves JavaScript/React/MVVM usage, desktop adapters, architecture, tests, compatibility matrices and licensing. [Open the web demo](https://wieslawsoltes.github.io/RichTextWeb/).
 
+## Rich page authoring — 0.5.0
+
+Headers and footers now use the existing rich controls rather than plain-text forms: formatting, fields, tables, images and equations stay editable. Default, first-page and even-page stories have ribbon commands and double-click editing. The DOM-independent `DocumentStorySession` supports isolated drafts, cancel, conflict detection and a single parent undo step.
+
+`SetPageSetup` validates margins, column count/gap, story distances, page numbering and variant flags before any mutation. WPF-style `ColumnWidth` and `IsColumnWidthFlexible` now affect measured columns; native DOCX preserves the resulting geometry. Vertical and MultiplePages views keep only viewport/overscan page containers plus the live page, instead of a placeholder per document page. The complete body is still measured; this is not full incremental typesetting virtualization.
+
+```js
+editor.Execute("SetPageSetup", {
+  PagePadding: { Left: 48, Top: 72, Right: 48, Bottom: 64 },
+  ColumnCount: 2,
+  ColumnGap: 24,
+  PageNumberStart: 7,
+  DifferentFirstPage: true,
+  DifferentOddAndEvenPages: true,
+});
+```
+
+[Page-authoring APIs and supported limits](docs/PAGE-AUTHORING.md) · [PR #19](https://github.com/wieslawsoltes/RichTextWeb/pull/19). The feature candidate passed 404 unit tests and 112 Chromium groups plus native/Blazor qualification; the release adds a native DOCX column-geometry regression (405 tests). See the [verification report](docs/VERIFICATION.md) and release-commit CI for exact evidence.
+
 ## Paginated authoring and equations — 0.4.0
 
 The recovered implementation is committed as actual source in [PR #15](https://github.com/wieslawsoltes/RichTextWeb/pull/15). [PR #16](https://github.com/wieslawsoltes/RichTextWeb/pull/16) adds structural equation editing and fixes page navigation, column-break continuation, equation draft conversion and immediate dialog reopening.

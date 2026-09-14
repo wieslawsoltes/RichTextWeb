@@ -1,6 +1,6 @@
 {
   "name": "@wieslawsoltes/richtextweb",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Reusable rich text engine, flow documents, web components and .NET-style MVVM APIs for JavaScript and React",
   "type": "module",
   "license": "MIT",

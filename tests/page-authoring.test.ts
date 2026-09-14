@@ -297,3 +297,19 @@ test("very large page windows remain bounded and include distant visible pages",
   assert.ok(pages.length < 20);
   assert.equal(new Set(pages).size, pages.length);
 });
+
+
+test("native DOCX columns preserve preferred/fixed browser geometry", async () => {
+  const doc = new FlowDocument(new Paragraph("Column geometry"));
+  doc.PageWidth = 800;
+  doc.PageHeight = 500;
+  doc.PagePadding = 50;
+  doc.ColumnWidth = 200;
+  doc.ColumnGap = 20;
+  doc.IsColumnWidthFlexible = false;
+  const bytes = await toDOCX(doc);
+  const zip = await JSZip.loadAsync(bytes);
+  const xml = await zip.file("word/document.xml")!.async("string");
+  assert.match(xml, /<w:cols w:num="3" w:space="300"/);
+  assert.match(xml, /w:right="1650"/);
+});
