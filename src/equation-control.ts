@@ -87,6 +87,31 @@ export class EquationEditor extends HTMLElementBase {
   set Format(value: EquationInputFormat) {
     this.Value = { ...this.value, Format: value };
   }
+  /** Convert a valid equation, or interpret a replacement draft in its requested format.
+   * Failed conversions preserve the source and history. The Format setter remains
+   * available for callers that explicitly want to change only interpretation.
+   */
+  ConvertFormat(format: EquationInputFormat): boolean {
+    if (format !== "latex" && format !== "mathml")
+      throw new TypeError("Equation format must be latex or mathml.");
+    if (this.locked || format === this.Format) return false;
+    let current: EquationRenderResult | null = null;
+    try {
+      current = renderEquation(this.value);
+    } catch {
+      // A replacement may already use the target syntax before the selector changes.
+      // It is accepted only when that syntax validates; no valid tree is discarded.
+    }
+    const source = current
+      ? format === "mathml"
+        ? current.MathML
+        : mathMLToLaTeX(current.MathML)
+      : this.Source;
+    const next = { ...this.value, Source: source, Format: format };
+    renderEquation(next);
+    this.change(next, true);
+    return true;
+  }
   get DisplayMode(): boolean {
     return !!this.value.DisplayMode;
   }
@@ -402,22 +427,13 @@ export class EquationEditor extends HTMLElementBase {
     format.add(new Option("MathML", "mathml"));
     format.value = this.Format;
     format.onchange = () => {
-      if (format.value === "mathml" && this.Validate() && this.result)
-        this.change(
-          { ...this.value, Source: this.result.MathML, Format: "mathml" },
-          true,
-        );
-      else if (format.value !== this.Format) {
-        try {
-          const source = mathMLToLaTeX(this.Source);
-          renderEquation({ Source: source, Format: "latex" });
-          this.change({ ...this.value, Source: source, Format: "latex" }, true);
-        } catch (error) {
-          format.value = this.Format;
-          if (this.status)
-            this.status.textContent =
-              error instanceof Error ? error.message : String(error);
-        }
+      try {
+        this.ConvertFormat(format.value as EquationInputFormat);
+      } catch (error) {
+        format.value = this.Format;
+        if (this.status)
+          this.status.textContent =
+            error instanceof Error ? error.message : String(error);
       }
     };
     const sourceLabel = d.createElement("label");
