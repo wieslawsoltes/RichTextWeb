@@ -29,6 +29,41 @@ export async function runAuthoringPolishBrowserChecks(page) {
     window.polishEditor = e;
   });
   try {
+    // close() queues its event. Reopening in the same task used to dispose the
+    // new workbench when the preceding dialog's close task was delivered.
+    const sessions = await page.evaluate(async () => {
+      const toolbar = document.getElementById("polish-toolbar");
+      const retired = [];
+      for (let i = 0; i < 5; i++) {
+        toolbar.Execute("Equation");
+        const dialog = toolbar.shadowRoot.querySelector("dialog");
+        retired.push(dialog.querySelector("rich-equation-editor"));
+        dialog.close();
+      }
+      toolbar.Execute("Equation");
+      const active = toolbar.shadowRoot.querySelector("dialog");
+      const workbench = active.querySelector("rich-equation-editor");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const state = {
+        open: active.open,
+        sourcePresent: !!workbench.shadowRoot.querySelector("textarea"),
+        valid: workbench.Validate(),
+        disposed: retired.every((item) => item.RenderResult === null),
+        dialogs: toolbar.shadowRoot.querySelectorAll("dialog").length,
+      };
+      active.close();
+      return state;
+    });
+    assert.deepEqual(sessions, {
+      open: true,
+      sourcePresent: true,
+      valid: true,
+      disposed: true,
+      dialogs: 1,
+    });
+    results.push(
+      "Immediate dialog reopening isolates queued close events and disposes only retired workbenches",
+    );
     const realized = await page.evaluate(async () => {
       const e = polishEditor;
       e.PageArrangement = "MultiplePages";
