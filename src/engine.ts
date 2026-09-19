@@ -1,3 +1,9 @@
+import {
+  buildTableGrid,
+  sortTableRows,
+  normalizeTableHeaderGroups,
+  type TableSortOptions,
+} from "./table-grid.js";
 import { validatePageSetup, type PageSetupOptions } from "./page-setup.js";
 import {
   Equation,
@@ -5,6 +11,7 @@ import {
   FlowDocument,
   Run,
   TextPointer,
+  type TextElement,
   type DocumentNode,
 } from "./model.js";
 import {
@@ -767,6 +774,13 @@ export class RichTextEngine {
     )
       return false;
     const run = segment.Element;
+    // Field caches need boundary-aware insertion rather than extending their last Run.
+    for (
+      let current: TextElement | null = run;
+      current;
+      current = current.Parent
+    )
+      if (current.GetValue("Field")) return false;
     if (
       Object.entries(this.typing).some(
         ([name, value]) => !sameValue(run.GetValue(name), value),
@@ -1830,6 +1844,59 @@ export class RichTextEngine {
       { Kind: "TableStructure", Operation: "SplitTableCell" },
     );
   }
+  /** Stable, multi-key rich row sorting. Vertically merged cells must be split first. */
+  SortTable(options: TableSortOptions): void {
+    this.mutate(
+      (root) => {
+        const first = pointBlock(root, this.start),
+          last = pointBlock(root, this.end);
+        const localStart = this.start - first.start,
+          localEnd = this.end - last.start;
+        const { table } = tableContext(root, this.start);
+        sortTableRows(table, options);
+        const blocks = textBlocks(root),
+          movedFirst = blocks.find((b) => b.node.id === first.node.id),
+          movedLast = blocks.find((b) => b.node.id === last.node.id);
+        if (movedFirst && movedLast) {
+          const start =
+            movedFirst.start + Math.min(localStart, movedFirst.text.length);
+          const end =
+            movedLast.start + Math.min(localEnd, movedLast.text.length);
+          this.start = Math.min(start, end);
+          this.end = Math.max(start, end);
+        }
+      },
+      true,
+      undefined,
+      { Kind: "TableStructure", Operation: "SortTable" },
+    );
+  }
+  /** Mark a leading table-row prefix as repeatable headers, also reflected by DOCX. */
+  SetTableHeaderRows(count: number): void {
+    this.mutate(
+      (root) => {
+        const { table } = tableContext(root, this.start),
+          grid = buildTableGrid(table);
+        if (!Number.isInteger(count) || count < 0 || count > grid.rows.length)
+          throw new RangeError("Header row count is outside the table.");
+        for (const origin of grid.origins.values())
+          if (origin.row < count && origin.row + origin.height > count)
+            throw new Error(
+              "Split cells that span the header boundary before changing header rows.",
+            );
+        for (const group of table.children ?? []) delete group.props.IsHeader;
+        grid.rows.forEach((row, index) => {
+          row.props.IsHeader = index < count;
+          for (const cell of row.children ?? [])
+            cell.props.IsHeader = index < count;
+        });
+        normalizeTableHeaderGroups(table);
+      },
+      false,
+      undefined,
+      { Kind: "TableStructure", Operation: "SetTableHeaderRows" },
+    );
+  }
   InsertTableRow(before = false): void {
     this.mutate(
       (root) => {
@@ -2268,6 +2335,10 @@ export class RichTextEngine {
           parameter?.Rows ?? parameter?.rows ?? 2,
           parameter?.Columns ?? parameter?.columns ?? 2,
         );
+      case "sorttable":
+        return this.SortTable(parameter);
+      case "settableheaderrows":
+        return this.SetTableHeaderRows(Number(parameter));
       case "inserttablerow":
         return this.InsertTableRow(
           parameter?.Before ?? parameter?.before ?? false,
@@ -2538,6 +2609,8 @@ export const EditingCommands = Object.freeze(
       "DeletePreviousWord",
       "DeleteNextWord",
       "ClearFormatting",
+      "SortTable",
+      "SetTableHeaderRows",
     ].map((name) => [name, name]),
   ),
 );
@@ -2743,57 +2816,6 @@ function relocateRevisionPatch(
   };
   visit(patch.Change);
   return patch;
-}
-
-function buildTableGrid(table: DocumentNode) {
-  const rows = findTableRows(table),
-    slots: DocumentNode[][] = [],
-    origins = new Map<
-      string,
-      {
-        node: DocumentNode;
-        row: number;
-        column: number;
-        width: number;
-        height: number;
-      }
-    >();
-  let width = 0;
-  rows.forEach((row, y) => {
-    const occupied = (slots[y] ??= []);
-    let x = 0;
-    for (const cell of row.children ?? []) {
-      while (occupied[x]) x++;
-      const w = Math.max(1, Number(cell.props.ColumnSpan) || 1),
-        h = Math.max(1, Number(cell.props.RowSpan) || 1);
-      if (!Number.isInteger(w) || !Number.isInteger(h) || y + h > rows.length)
-        throw new Error("Table spans exceed the available grid.");
-      origins.set(cell.id, {
-        node: cell,
-        row: y,
-        column: x,
-        width: w,
-        height: h,
-      });
-      for (let dy = 0; dy < h; dy++)
-        for (let dx = 0; dx < w; dx++) {
-          const target = (slots[y + dy] ??= []);
-          if (target[x + dx]) throw new Error("Table spans overlap.");
-          target[x + dx] = cell;
-        }
-      x += w;
-      width = Math.max(width, x);
-    }
-  });
-  if (
-    slots.some(
-      (row) =>
-        row.length !== width ||
-        Array.from({ length: width }, (_, i) => row[i]).some((cell) => !cell),
-    )
-  )
-    throw new Error("Table editing requires a complete rectangular grid.");
-  return { rows, slots, origins, width };
 }
 
 function captureStructureAnchors(root: DocumentNode, patch: DocumentPatch) {
