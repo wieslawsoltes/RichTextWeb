@@ -375,7 +375,16 @@ export function createDocumentRibbon({
             t("Footnote", "Insert footnote", "¹", large),
             t("Endnote", "Insert endnote", "i", large),
           ]),
+          group("captions", "Captions", [
+            t("Caption", "Insert caption", "page", large),
+            t("CrossReference", "Cross-reference", "link"),
+            t("TableOfFigures", "Table of figures", "list"),
+          ]),
           group("fields", "Fields & references", [
+            t("FieldCode", "Field code", "code"),
+            t("LockField", "Lock field", "lock"),
+            t("UnlockField", "Unlock field", "lock"),
+            t("UnlinkField", "Unlink field", "link"),
             t("Field", "Insert field", "formula", large),
             t("UpdateFields", "Update fields", "redo"),
             b("field-catalog", "Field list", "table", () =>
@@ -407,7 +416,7 @@ export function createDocumentRibbon({
         [
           group("proofing", "Proofing", [
             app("spellcheck", "Spelling", "check", large),
-            app("properties", "Word count", "chart", large),
+            t("WordCount", "Word count", "chart", { ...large, mutates: false }),
           ]),
           group("review-comments", "Comments", [
             t("Comment", "New comment", "comment", large),
@@ -521,6 +530,11 @@ export function createDocumentRibbon({
         "W",
       ),
       tab("table", "Table layout", [
+        group("table-data", "Data", [
+          t("Formula", "Formula", "formula", large),
+          t("SortTable", "Sort", "list"),
+          t("RepeatHeaderRows", "Repeat header rows", "table"),
+        ]),
         group("table-rows", "Rows & columns", [
           t("InsertTableRow", "Insert row below", "plus"),
           app("table-row-before", "Insert row above", "plus"),

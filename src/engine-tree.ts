@@ -232,6 +232,43 @@ export function deleteRange(
     }
   }
 }
+/** A field edge belongs to surrounding text, not to the cached result inside the field. */
+function isFieldBoundary(root: DocumentNode, offset: number): boolean {
+  const block = pointBlock(root, offset);
+  const visit = (node: DocumentNode, start: number): boolean => {
+    const end = start + inlineText(node).length;
+    if (offset < start || offset > end) return false;
+    if (node.props.Field && (offset === start || offset === end)) return true;
+    if (
+      ["Equation", "Image", "InlineUIContainer", "Figure", "Floater"].includes(
+        node.type,
+      )
+    )
+      return false;
+    let next = start;
+    for (const child of node.children ?? []) {
+      if (visit(child, next)) return true;
+      next += inlineText(child).length;
+    }
+    return false;
+  };
+  return visit(block.node, block.start);
+}
+function continuationParagraphProps(
+  props: Record<string, any>,
+): Record<string, any> {
+  const result: Record<string, any> = {
+    ...props,
+    BreakPageBefore: false,
+    BreakColumnBefore: false,
+  };
+  // These identify one authored caption/index entry; they are not paragraph formatting.
+  delete result.Caption;
+  delete result.CaptionInstance;
+  delete result.TocTargetId;
+  if (result.StyleName === "Caption") delete result.StyleName;
+  return result;
+}
 export function insertText(
   root: DocumentNode,
   offset: number,
@@ -250,6 +287,7 @@ export function insertText(
         list.find((item) => item.node.type === "Run" && item.start === offset);
     if (
       leaf &&
+      !(leaf.props.Field && isFieldBoundary(root, offset)) &&
       Object.entries(props).every(
         ([name, value]) =>
           JSON.stringify(leaf.props[name]) === JSON.stringify(value),
@@ -331,11 +369,7 @@ export function insertText(
             ...(line ? [insertion(line)] : []),
             ...(index === lines.length - 2 ? after : []),
           ],
-          {
-            ...block.node.props,
-            BreakPageBefore: false,
-            BreakColumnBefore: false,
-          },
+          continuationParagraphProps(block.node.props),
         ),
       );
     block.parent.children!.splice(block.index + 1, 0, ...created);

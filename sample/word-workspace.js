@@ -1,3 +1,7 @@
+function fieldReference(instruction) {
+  const match = /^(?:REF|PAGEREF)\s+(?:"([^"]+)"|(\S+))/i.exec(instruction);
+  return match?.[1] ?? match?.[2];
+}
 import "@wieslawsoltes/ribbon-web";
 import {
   DockingManager,
@@ -63,6 +67,7 @@ const passive = new Set([
   "print",
   "pdf-tools",
   "PagePreview",
+  "WordCount",
   "ReviewChanges",
   "Copy",
   "collaboration-demo",
@@ -591,7 +596,11 @@ export function createWordWorkspace(hooks) {
           Start: bounds ? map.GetTextOffset(bounds.ContentStart) : 0,
           End: bounds ? map.GetTextOffset(bounds.ContentEnd) : 0,
           Parent: parent,
-          Reference: props.Field?.Argument,
+          Reference:
+            props.Field?.Argument ||
+            (/^(REF|PAGEREF)\s/i.test(props.Field?.Instruction ?? "")
+              ? fieldReference(props.Field.Instruction)
+              : undefined),
           Order: next.length,
           Node: node,
         };

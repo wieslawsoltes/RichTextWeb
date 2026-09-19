@@ -17,6 +17,14 @@ npm install @wieslawsoltes/richtextweb
 
 The [complete original guide](README.web.md) preserves JavaScript/React/MVVM usage, desktop adapters, architecture, tests, compatibility matrices and licensing. [Open the web demo](https://wieslawsoltes.github.io/RichTextWeb/).
 
+## Word authoring extension — source, unreleased
+
+The core engine and reusable controls now include bounded table formulas with 18 functions and table/range dependencies; stable three-key rich table sorting; repeat-header authoring; numbered captions, bookmark cross-references and tables of figures/tables; expanded native fields, field editing/locking/unlinking, document properties/variables and Unicode word/selection statistics. Native DOCX tests exercise these without relying on the private RichTextWeb extension. Field cache loss, embedded-object offsets and typing at field/caption boundaries are also fixed.
+
+Document Studio exposes the shared commands through References, Table layout and Review. Its **automation** template contains a calculated estimate, budget approval, caption, reference and list of tables. The additions remain in source until a subsequent package release; the version remains 0.5.0.
+
+[Authoring API examples and supported limits](docs/WORD-AUTHORING.md) · [Full engine/control feature audit and prioritized remaining work](docs/WORD-FEATURE-AUDIT.md). The audit distinguishes implemented behavior from preservation and unqualified fidelity, rather than claiming complete Word parity. Reproduce its declaration inventory with `node scripts/audit-word-features.mjs > feature-inventory.json`.
+
 ## Rich page authoring — 0.5.0
 
 Headers and footers now use the existing rich controls rather than plain-text forms: formatting, fields, tables, images and equations stay editable. Default, first-page and even-page stories have ribbon commands and double-click editing. The DOM-independent `DocumentStorySession` supports isolated drafts, cancel, conflict detection and a single parent undo step.

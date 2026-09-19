@@ -1,3 +1,5 @@
+import { normalizeTableHeaderGroups } from "./table-grid.js";
+import { parseFieldCode } from "./field-code.js";
 import { pageSettings } from "./pagination.js";
 import { pageStoryVariantEnabled } from "./page-setup.js";
 import { equationToOMML, ommlToMathML } from "./equations-omml.js";
@@ -13,15 +15,49 @@ import {
   safeURL,
   type MarkupNode,
 } from "./formats-markup.js";
+const CORE_PROPERTIES_NS =
+  "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+const CUSTOM_PROPERTIES_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties";
+const VALUE_TYPES_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes";
 const REVIEW_NS = "https://richtextweb.dev/schema/document-review/1";
 const NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+/** Native document properties are bounded primitive data, never executable or external content. */
+function scalarProperties(
+  value: unknown,
+): [string, string | number | boolean][] {
+  if (value === undefined) return [];
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new TypeError("Document properties require a scalar dictionary.");
+  const entries = Object.entries(value);
+  if (entries.length > 1000)
+    throw new RangeError("At most 1,000 document properties are supported.");
+  for (const [name, item] of entries) {
+    if (
+      !name ||
+      name.length > 255 ||
+      !["string", "number", "boolean"].includes(typeof item) ||
+      (typeof item === "number" && !Number.isFinite(item)) ||
+      String(item).length > 65536 ||
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(name + String(item))
+    )
+      throw new TypeError("Invalid document property name or value.");
+  }
+  return entries as [string, string | number | boolean][];
+}
 /** Canonicalize declared namespace prefixes; Office XML is namespace-based, not prefix-based. */
 function parseOfficeXML(source: string): MarkupNode {
   const root = parseMarkup(source, true);
   const prefixes: Record<string, string> = {
     [NS]: "w",
+    [CORE_PROPERTIES_NS]: "cp",
+    [CUSTOM_PROPERTIES_NS]: "custom",
+    [VALUE_TYPES_NS]: "vt",
+    "http://purl.org/dc/elements/1.1/": "dc",
+    "http://purl.org/dc/terms/": "dcterms",
     [REL]: "r",
     "http://schemas.microsoft.com/office/word/2010/wordml": "w14",
     "http://schemas.microsoft.com/office/word/2012/wordml": "w15",
@@ -70,8 +106,13 @@ function officeMarkup(n: MarkupNode): string {
 /** Fold native begin/instruction/separate/end fields into a single inert field node. */
 function normalizeFields(nodes: MarkupNode[]): MarkupNode[] {
   const output: MarkupNode[] = [],
-    stack: { instruction: string; result: MarkupNode[]; separated: boolean }[] =
-      [];
+    stack: {
+      instruction: string;
+      result: MarkupNode[];
+      separated: boolean;
+      locked?: string;
+      dirty?: string;
+    }[] = [];
   const append = (n: MarkupNode) => {
     const field = stack.at(-1);
     if (!field) output.push(n);
@@ -81,7 +122,13 @@ function normalizeFields(nodes: MarkupNode[]): MarkupNode[] {
     const fld = n.name === "w:r" ? child(n, "w:fldChar") : undefined,
       kind = fld?.attrs["w:fldCharType"];
     if (kind === "begin") {
-      stack.push({ instruction: "", result: [], separated: false });
+      stack.push({
+        instruction: "",
+        result: [],
+        separated: false,
+        locked: fld?.attrs["w:fldLock"],
+        dirty: fld?.attrs["w:dirty"],
+      });
       continue;
     }
     if (kind === "separate" && stack.length) {
@@ -92,7 +139,11 @@ function normalizeFields(nodes: MarkupNode[]): MarkupNode[] {
       const field = stack.pop()!;
       append({
         name: "w:fldSimple",
-        attrs: { "w:instr": field.instruction.trim() },
+        attrs: {
+          "w:instr": field.instruction.trim(),
+          ...(field.locked ? { "w:fldLock": field.locked } : {}),
+          ...(field.dirty ? { "w:dirty": field.dirty } : {}),
+        },
         children: field.result,
       });
       continue;
@@ -619,8 +670,13 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     if (n.props.Field) {
       const field = n.props.Field,
         instruction = String(field.Instruction ?? field.Type ?? ""),
-        type = instruction.trim().split(/\s+/)[0]?.toUpperCase();
-      const body = (n.children ?? []).map((c) => inline(c, props)).join("");
+        type = instruction.trim().startsWith("=")
+          ? "="
+          : instruction.trim().split(/\s+/)[0]?.toUpperCase();
+      const body =
+        n.type === "Run"
+          ? emitText(n.text ?? "", props)
+          : (n.children ?? []).map((c) => inline(c, props)).join("");
       return [
         "PAGE",
         "NUMPAGES",
@@ -639,8 +695,15 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
         "NOTEREF",
         "PAGEREF",
         "FILENAME",
+        "=",
+        "IF",
+        "DOCPROPERTY",
+        "DOCVARIABLE",
+        "NUMWORDS",
+        "NUMCHARS",
+        "NUMPARAS",
       ].includes(type)
-        ? `<w:fldSimple w:instr="${esc(instruction)}" w:dirty="${field.Dirty ? "true" : "false"}">${body}</w:fldSimple>`
+        ? `<w:fldSimple w:instr="${esc(instruction)}" w:dirty="${field.Dirty ? "true" : "false"}"${field.Locked ? ' w:fldLock="true"' : ""}>${body}</w:fldSimple>`
         : body;
     }
     if (n.props.NoteReference) {
@@ -785,6 +848,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     let pPr = "";
     if (n.props.HeadingLevel)
       pPr += `<w:pStyle w:val="Heading${Math.max(1, Math.min(6, Number(n.props.HeadingLevel)))}"/>`;
+    else if (n.props.Caption || n.props.StyleName === "Caption")
+      pPr += '<w:pStyle w:val="Caption"/>';
     if (props.FlowDirection)
       pPr += `<w:bidi w:val="${props.FlowDirection === "RightToLeft" ? "1" : "0"}"/>`;
     if (props.TextAlignment)
@@ -934,10 +999,19 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
             .join("");
         }
         if (n.type === "Table") {
-          const rows: DocumentNode[] = [];
-          const gather = (n: DocumentNode) => {
-            if (n.type === "TableRow") rows.push(n);
-            else for (const c of tableReviewChildren(n)) gather(c);
+          const rows: DocumentNode[] = [],
+            headerRows = new Set<string>();
+          const gather = (n: DocumentNode, header = false) => {
+            header ||= n.props.IsHeader === true;
+            if (n.type === "TableRow") {
+              rows.push(n);
+              if (
+                header ||
+                ((n.children?.length ?? 0) > 0 &&
+                  n.children!.every((c) => c.props.IsHeader))
+              )
+                headerRows.add(n.id);
+            } else for (const c of tableReviewChildren(n)) gather(c, header);
           };
           gather(n);
           let columns = 1;
@@ -1026,8 +1100,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
               columns = Math.max(columns, column);
               return (
                 "<w:tr>" +
-                (rowMark
-                  ? `<w:trPr><w:${rowMark.inserted ? "ins" : "del"}${revisionAttrs(rowMark.revision)}/></w:trPr>`
+                (rowMark || headerRows.has(row.id)
+                  ? `<w:trPr>${headerRows.has(row.id) ? "<w:tblHeader/>" : ""}${rowMark ? `<w:${rowMark.inserted ? "ins" : "del"}${revisionAttrs(rowMark.revision)}/>` : ""}</w:trPr>`
                   : "") +
                 fragments.join("") +
                 "</w:tr>"
@@ -1187,14 +1261,16 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
         .join("")}</w15:commentsEx>`,
     );
   }
+  const documentVariables = scalarProperties(root.props.DocumentVariables);
   if (
     pageStoryVariantEnabled(root.props, "EvenPage") ||
-    root.props.TrackChanges
+    root.props.TrackChanges ||
+    documentVariables.length
   ) {
     relationship("settings", "settings.xml");
     zip.file(
       "word/settings.xml",
-      `<w:settings xmlns:w="${NS}">${pageStoryVariantEnabled(root.props, "EvenPage") ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}</w:settings>`,
+      `<w:settings xmlns:w="${NS}">${pageStoryVariantEnabled(root.props, "EvenPage") ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}${documentVariables.length ? `<w:docVars>${documentVariables.map(([name, value]) => `<w:docVar w:name="${esc(name)}" w:val="${esc(String(value))}"/>`).join("")}</w:docVars>` : ""}</w:settings>`,
     );
     extraTypes.push(
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>',
@@ -1222,7 +1298,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   relationship("styles", "styles.xml");
   zip.file(
     "word/styles.xml",
-    `<w:styles xmlns:w="${NS}"><w:docDefaults><w:rPrDefault>${runProperties(root.props)}</w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>${Array.from({ length: 6 }, (_, i) => `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${48 - i * 4}"/></w:rPr></w:style>`).join("")}</w:styles>`,
+    `<w:styles xmlns:w="${NS}"><w:docDefaults><w:rPrDefault>${runProperties(root.props)}</w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/></w:style>${Array.from({ length: 6 }, (_, i) => `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${48 - i * 4}"/></w:rPr></w:style>`).join("")}</w:styles>`,
   );
   if (numberings.length) {
     relationship("numbering", "numbering.xml");
@@ -1235,9 +1311,70 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     "word/_rels/document.xml.rels",
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`,
   );
+  const rootRelationships: string[] = [];
+  const customProperties = scalarProperties(root.props.CustomProperties);
+  if (customProperties.length) {
+    zip.file(
+      "docProps/custom.xml",
+      `<Properties xmlns="${CUSTOM_PROPERTIES_NS}" xmlns:vt="${VALUE_TYPES_NS}">${customProperties
+        .map(([name, value], index) => {
+          const type =
+            typeof value === "boolean"
+              ? "bool"
+              : typeof value === "number"
+                ? "r8"
+                : "lpwstr";
+          return `<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="${index + 2}" name="${esc(name)}"><vt:${type}>${esc(String(value))}</vt:${type}></property>`;
+        })
+        .join("")}</Properties>`,
+    );
+    rootRelationships.push(
+      `<Relationship Id="rIdCustomProperties" Type="${REL}/custom-properties" Target="docProps/custom.xml"/>`,
+    );
+    extraTypes.push(
+      '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>',
+    );
+  }
+  const coreProperties: string[] = [];
+  for (const [name, tag] of [
+    ["Title", "dc:title"],
+    ["Author", "dc:creator"],
+    ["Subject", "dc:subject"],
+    ["Description", "dc:description"],
+    ["Keywords", "cp:keywords"],
+    ["LastModifiedBy", "cp:lastModifiedBy"],
+  ]) {
+    if (typeof root.props[name!] === "string")
+      coreProperties.push(`<${tag}>${esc(root.props[name!])}</${tag}>`);
+  }
+  for (const [name, tag] of [
+    ["CreatedAt", "dcterms:created"],
+    ["ModifiedAt", "dcterms:modified"],
+  ]) {
+    if (root.props[name!] !== undefined) {
+      const date = new Date(root.props[name!]);
+      if (!Number.isFinite(date.getTime()))
+        throw new TypeError(`Invalid ${name} document property.`);
+      coreProperties.push(
+        `<${tag} xsi:type="dcterms:W3CDTF">${date.toISOString()}</${tag}>`,
+      );
+    }
+  }
+  if (coreProperties.length) {
+    zip.file(
+      "docProps/core.xml",
+      `<cp:coreProperties xmlns:cp="${CORE_PROPERTIES_NS}" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${coreProperties.join("")}</cp:coreProperties>`,
+    );
+    rootRelationships.push(
+      '<Relationship Id="rIdCoreProperties" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>',
+    );
+    extraTypes.push(
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>',
+    );
+  }
   zip.file(
     "_rels/.rels",
-    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/></Relationships>`,
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/>${rootRelationships.join("")}</Relationships>`,
   );
   zip.file(
     "[Content_Types].xml",
@@ -1405,6 +1542,7 @@ export async function fromDOCX(
     const styleId = val(child(pr, "w:pStyle")),
       p = inheritedStyle(styleId);
     if (!pr) return p;
+    if (styleId === "Caption") p.StyleName = "Caption";
     if (child(pr, "w:bidi"))
       p.FlowDirection = bool(child(pr, "w:bidi"))
         ? "RightToLeft"
@@ -1643,8 +1781,13 @@ export async function fromDOCX(
           node("Span", result, {
             Field: {
               Instruction: instruction,
-              Type: instruction.trim().split(/\s+/)[0]?.toUpperCase() ?? "",
-              Dirty: n.attrs["w:dirty"] === "true",
+              Type: instruction.trim().startsWith("=")
+                ? "="
+                : (instruction.trim().split(/\s+/)[0]?.toUpperCase() ?? ""),
+              Dirty: ["1", "true", "on"].includes(n.attrs["w:dirty"] ?? ""),
+              ...(["1", "true", "on"].includes(n.attrs["w:fldLock"] ?? "")
+                ? { Locked: true }
+                : {}),
             },
           }),
         ];
@@ -2050,10 +2193,25 @@ export async function fromDOCX(
     for (const n of groupTableOfContents(children)) {
       if (n.name === "rtw:toc") {
         const max = n.attrs.Instruction?.match(/\\o\s+"?\d+-(\d+)/)?.[1];
+        let captionLabel: string | undefined;
+        try {
+          captionLabel = parseFieldCode(n.attrs.Instruction ?? "").Switches
+            .c?.[0];
+        } catch {
+          /* Keep the imported contents cache. */
+        }
+        const converted = convertBlocks(n.children);
+        const title = converted[0]
+          ? FlowDocument.FromJSON(node("FlowDocument", [converted[0]])).Text
+          : captionLabel
+            ? `Table of ${captionLabel}s`
+            : "Contents";
         result.push(
-          node("Section", convertBlocks(n.children), {
+          node("Section", converted, {
             TableOfContents: {
               Instruction: n.attrs.Instruction,
+              Title: title,
+              ...(captionLabel ? { CaptionLabel: captionLabel } : {}),
               MaxLevel: Number(max) || 3,
               IncludePageNumbers: true,
             },
@@ -2082,6 +2240,27 @@ export async function fromDOCX(
           ),
           numPr = child(pr, "w:numPr"),
           numId = val(child(numPr, "w:numId"));
+        if (props.StyleName === "Caption") {
+          const findSequence = (current: DocumentNode): string | undefined => {
+            if (current.props.Field) {
+              try {
+                const code = parseFieldCode(
+                  current.props.Field.Instruction ?? "",
+                );
+                if (code.Type === "SEQ") return code.Arguments[0];
+              } catch {
+                /* Keep the inert native field cache. */
+              }
+            }
+            for (const c of current.children ?? []) {
+              const label = findSequence(c);
+              if (label) return label;
+            }
+            return undefined;
+          };
+          const label = findSequence(para);
+          if (label) para.props.Caption = { Label: label };
+        }
         const changed = child(pr, "w:pPrChange");
         if (recordReview && changed) {
           const before = paragraphProps(child(changed, "w:pPr")),
@@ -2155,7 +2334,11 @@ export async function fromDOCX(
             initialParagraphs = importParagraphs,
             outerReview = recordReview,
             annotationIndex = annotations.length,
-            importedRow = node("TableRow"),
+            importedRow = node(
+              "TableRow",
+              [],
+              bool(child(rowPr, "w:tblHeader")) ? { IsHeader: true } : {},
+            ),
             cells: DocumentNode[] = [],
             touched = new Set<number>();
           let column = 0;
@@ -2272,6 +2455,7 @@ export async function fromDOCX(
               );
           }
         }
+        normalizeTableHeaderGroups(table);
         result.push(table);
       } else if (["w:sdt", "w:sdtContent", "w:ins"].includes(n.name))
         result.push(...convertBlocks(n.children));
@@ -2441,6 +2625,64 @@ export async function fromDOCX(
   const settings = parseOfficeXML(
     await read(findPart("settings", "settings.xml")),
   );
+  const variables: Record<string, string> = Object.create(null);
+  for (const item of descendants(settings, "w:docVar"))
+    if (item.attrs["w:name"] !== undefined)
+      variables[item.attrs["w:name"]!] = item.attrs["w:val"] ?? "";
+  if (Object.keys(variables).length) defaults.DocumentVariables = variables;
+  const propertyPart = async (suffix: string) => {
+    const relationship = descendants(rootRels, "Relationship").find((r) =>
+      r.attrs.Type?.endsWith("/" + suffix),
+    );
+    const path = relationship?.attrs.Target?.replace(/^\//, "");
+    if (
+      !path ||
+      relationship?.attrs.TargetMode === "External" ||
+      path.split("/").includes("..")
+    )
+      return parseOfficeXML("");
+    return parseOfficeXML(await read(path));
+  };
+  const customRoot = await propertyPart("custom-properties"),
+    customProperties: Record<string, string | number | boolean> =
+      Object.create(null);
+  for (const item of descendants(customRoot, "custom:property")) {
+    const name = item.attrs.name,
+      value = item.children.find((n) => n.name.startsWith("vt:"));
+    if (!name || !value) continue;
+    const source = textContent(value);
+    if (["vt:lpwstr", "vt:lpstr", "vt:bstr"].includes(value.name))
+      customProperties[name] = source;
+    else if (
+      value.name === "vt:bool" &&
+      ["true", "false", "1", "0"].includes(source)
+    )
+      customProperties[name] = source === "true" || source === "1";
+    else if (
+      ["vt:i4", "vt:int", "vt:ui4", "vt:i8", "vt:r8", "vt:decimal"].includes(
+        value.name,
+      ) &&
+      source.trim() &&
+      Number.isFinite(Number(source))
+    )
+      customProperties[name] = Number(source);
+  }
+  if (Object.keys(customProperties).length)
+    defaults.CustomProperties = customProperties;
+  const coreRoot = await propertyPart("core-properties");
+  for (const [name, tag] of [
+    ["Title", "dc:title"],
+    ["Author", "dc:creator"],
+    ["Subject", "dc:subject"],
+    ["Description", "dc:description"],
+    ["Keywords", "cp:keywords"],
+    ["LastModifiedBy", "cp:lastModifiedBy"],
+    ["CreatedAt", "dcterms:created"],
+    ["ModifiedAt", "dcterms:modified"],
+  ]) {
+    const item = descendants(coreRoot, tag!)[0];
+    if (item) defaults[name!] = textContent(item);
+  }
   const evenOdd = descendants(settings, "w:evenAndOddHeaders")[0];
   defaults.DifferentOddAndEvenPages =
     !!evenOdd &&

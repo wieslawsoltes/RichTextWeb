@@ -1,3 +1,8 @@
+import {
+  DocumentFeatures,
+  type FieldContext,
+  type FieldUpdateResult,
+} from "./document-features.js";
 import { pageStoryKey, documentPageNumber } from "./page-setup.js";
 import { pageAtOffset, pagePreviewWindow } from "./page-window.js";
 export { pageAtOffset, pagePreviewWindow } from "./page-window.js";
@@ -698,12 +703,26 @@ export class RichTextBox extends HTMLElementBase {
     this.restoreSelection();
   }
 
+  /** Only finite, current measured layout supplies page values; continuous controls leave them unresolved. */
+  GetFieldContext(): FieldContext {
+    return {};
+  }
+  UpdateFields(context: FieldContext = {}): FieldUpdateResult | false {
+    if (this.IsReadOnly) return false;
+    const result = new DocumentFeatures(this.Engine).UpdateFields({
+      ...this.GetFieldContext(),
+      ...context,
+    });
+    this.restoreSelection();
+    return result;
+  }
   Execute(command: string, parameter?: any): unknown {
     const name = command.replace(
       /^(EditingCommands|ApplicationCommands)\./,
       "",
     );
     const normalized = name.replace(/[\s_-]/g, "").toLowerCase();
+    if (normalized === "updatefields") return this.UpdateFields(parameter);
     if (normalized === "copy") return this.Copy();
     if (normalized === "cut") return this.Cut();
     if (normalized === "paste") return this.Paste();
@@ -1254,6 +1273,26 @@ export class RichTextBox extends HTMLElementBase {
     if (event.isComposing || this._composing) return;
     const modifier = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
+    if (key === "f9" && !event.altKey && !this.IsReadOnly) {
+      event.preventDefault();
+      this.syncSelection();
+      if (modifier && event.shiftKey) {
+        const features = new DocumentFeatures(this.Engine),
+          field = features.GetSelectedField();
+        if (field) features.UnlinkField(field.id);
+      } else if (!modifier && !event.shiftKey) this.UpdateFields();
+      this.restoreSelection();
+      return;
+    }
+    if (modifier && key === "f11" && !event.altKey && !this.IsReadOnly) {
+      event.preventDefault();
+      this.syncSelection();
+      const features = new DocumentFeatures(this.Engine),
+        field = features.GetSelectedField();
+      if (field) features.SetFieldLocked(field.id, !event.shiftKey);
+      this.restoreSelection();
+      return;
+    }
     if (modifier && !event.altKey) {
       if (key === "a") {
         event.preventDefault();
@@ -2015,6 +2054,30 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
   /** Locate a measured page without scanning all preceding pages. */
   GetPageAtOffset(offset: number, backward = false): PageLayoutPage | null {
     return this._layout ? pageAtOffset(this._layout, offset, backward) : null;
+  }
+  override GetFieldContext(): FieldContext {
+    const layout = this._layout;
+    if (
+      !layout ||
+      layout.Revision !== this.Document.Revision ||
+      this.ViewMode === "continuous"
+    )
+      return {};
+    const offsets = new Map<string, number>();
+    for (const [id, element] of this._render?.templates ?? []) {
+      const position = this._render?.positions.get(element);
+      if (position) offsets.set(id, position.start);
+    }
+    const props = this.Document.ToJSON().props;
+    return {
+      PageCount: layout.PageCount,
+      PageOfNode: (id) => {
+        const offset = offsets.get(id);
+        const page =
+          offset === undefined ? undefined : pageAtOffset(layout, offset);
+        return page ? documentPageNumber(props, page.PageNumber) : undefined;
+      },
+    };
   }
   get LayoutResult(): Readonly<PageLayoutResult> | null {
     return this._layout;

@@ -1,3 +1,5 @@
+import type { TableSortOptions } from "./table-grid.js";
+import type { CaptionOptions } from "./document-features.js";
 import { pageSettings } from "./pagination.js";
 import { DocumentStorySession } from "./story-session.js";
 import { pageStoryKey, pageStoryVariantEnabled } from "./page-setup.js";
@@ -64,7 +66,17 @@ const insert: Tool[] = [
   { label: "Column −", command: "DeleteTableColumn" },
   { label: "Merge cells", command: "MergeTableCells" },
   { label: "Split cell", command: "SplitTableCell" },
+  { label: "Formula", command: "Formula" },
+  { label: "Sort table", command: "SortTable" },
+  { label: "Repeat header rows", command: "RepeatHeaderRows" },
+  { label: "Caption", command: "Caption" },
+  { label: "Cross-reference", command: "CrossReference" },
+  { label: "Table of figures", command: "TableOfFigures" },
   { label: "Field", command: "Field" },
+  { label: "Field code", command: "FieldCode" },
+  { label: "Lock field", command: "LockField" },
+  { label: "Unlock field", command: "UnlockField" },
+  { label: "Unlink field", command: "UnlinkField" },
   { label: "Contents", command: "TableOfContents" },
   { label: "Footnote", command: "Footnote" },
   { label: "Endnote", command: "Endnote" },
@@ -85,6 +97,7 @@ const layout: Tool[] = [
   { label: "Page preview", command: "PagePreview" },
 ];
 const review: Tool[] = [
+  { label: "Word count", command: "WordCount" },
   { label: "Move selection", command: "MoveSelection" },
   { label: "Track changes", command: "TrackChanges" },
   { label: "Review changes", command: "ReviewChanges" },
@@ -94,7 +107,7 @@ const review: Tool[] = [
   { label: "Bookmark", command: "Bookmark" },
   { label: "Find / replace", command: "FindReplace" },
 ];
-const css = `:host{display:block;font:13px/1.4 var(--rt-ui-font,system-ui);color:var(--rt-toolbar-color,#22324b)}*{box-sizing:border-box}.tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:9px 12px;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#dbe1eb);border-radius:8px}.group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.group+.group{border-left:1px solid var(--rt-toolbar-border,#dbe1eb);padding-left:12px}button,input,select,textarea{font:inherit;color:inherit}button{min-height:32px;border:1px solid transparent;border-radius:5px;background:transparent;padding:5px 9px;cursor:pointer}button:hover{background:var(--rt-toolbar-hover,#edf3fc)}button[aria-pressed=true]{background:#dceaff;color:#084999;border-color:#accafa}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #367adb;outline-offset:2px}select,input,textarea{border:1px solid var(--rt-toolbar-border,#ccd5e1);border-radius:4px;background:var(--rt-toolbar-background,#fff);padding:5px;max-width:100%}select{max-width:150px}input[type=color]{width:34px;height:32px;padding:3px}dialog{max-height:90dvh;overflow:auto;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#cad3e0);border-radius:12px;padding:22px;width:min(520px,95vw);color:var(--rt-toolbar-color,#22324b);box-shadow:0 24px 90px #10203c40}dialog::backdrop{background:#172d4e55}h2{margin:0 0 16px;font-size:19px}label{display:flex;flex-direction:column;gap:5px;margin:12px 0}textarea{min-height:100px;width:100%}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.primary{background:#1254a3;color:white}.revision{border-top:1px solid #dce3ed;padding:10px 0}.revision p{white-space:pre-wrap;overflow-wrap:anywhere}.status{font-size:12px;max-width:360px}.muted{color:#63738a}@media(max-width:600px){.tools{gap:6px;padding:6px}.group+.group{padding-left:0;border-left:0}button{padding:5px 6px}}`;
+const css = `:host{display:block;font:13px/1.4 var(--rt-ui-font,system-ui);color:var(--rt-toolbar-color,#22324b)}*{box-sizing:border-box}.tools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:9px 12px;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#dbe1eb);border-radius:8px}.group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.group+.group{border-left:1px solid var(--rt-toolbar-border,#dbe1eb);padding-left:12px}button,input,select,textarea{font:inherit;color:inherit}button{min-height:32px;border:1px solid transparent;border-radius:5px;background:transparent;padding:5px 9px;cursor:pointer}button:hover{background:var(--rt-toolbar-hover,#edf3fc)}button[aria-pressed=true]{background:#dceaff;color:#084999;border-color:#accafa}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #367adb;outline-offset:2px}select,input,textarea{border:1px solid var(--rt-toolbar-border,#ccd5e1);border-radius:4px;background:var(--rt-toolbar-background,#fff);padding:5px;max-width:100%}select{max-width:150px}input[type=color]{width:34px;height:32px;padding:3px}dialog{max-height:90dvh;overflow:auto;background:var(--rt-toolbar-background,#fff);border:1px solid var(--rt-toolbar-border,#cad3e0);border-radius:12px;padding:22px;width:min(520px,95vw);color:var(--rt-toolbar-color,#22324b);box-shadow:0 24px 90px #10203c40}dialog::backdrop{background:#172d4e55}h2{margin:0 0 16px;font-size:19px}label{display:flex;flex-direction:column;gap:5px;margin:12px 0}textarea{min-height:100px;width:100%}dl{display:grid;grid-template-columns:1fr auto;gap:6px 24px}dt,dd{margin:0}dd{font-weight:600}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.primary{background:#1254a3;color:white}.revision{border-top:1px solid #dce3ed;padding:10px 0}.revision p{white-space:pre-wrap;overflow-wrap:anywhere}.status{font-size:12px;max-width:360px}.muted{color:#63738a}@media(max-width:600px){.tools{gap:6px;padding:6px}.group+.group{padding-left:0;border-left:0}button{padding:5px 6px}}`;
 
 /** Reusable editor chrome. All mutations go through the attached RichTextBox engine. */
 export class RichTextToolbar extends HTMLElementBase {
@@ -301,7 +314,7 @@ export class RichTextToolbar extends HTMLElementBase {
   }
   private select(
     label: string,
-    values: string[],
+    values: (string | { Value: string; Label: string })[],
     change: (value: string) => void,
   ): HTMLSelectElement {
     const select = this.ownerDocument.createElement("select");
@@ -309,7 +322,8 @@ export class RichTextToolbar extends HTMLElementBase {
     select.title = label;
     for (const value of values) {
       const option = this.ownerDocument.createElement("option");
-      option.value = option.textContent = value;
+      option.value = typeof value === "string" ? value : value.Value;
+      option.textContent = typeof value === "string" ? value : value.Label;
       select.append(option);
     }
     select.onchange = () => change(select.value);
@@ -326,7 +340,7 @@ export class RichTextToolbar extends HTMLElementBase {
       .forEach((control) => {
         control.disabled =
           locked &&
-          !["PagePreview", "ReviewChanges", "Copy"].includes(
+          !["PagePreview", "ReviewChanges", "Copy", "WordCount"].includes(
             control.dataset.command ?? "",
           );
         if (control.dataset.command === "Undo")
@@ -379,7 +393,7 @@ export class RichTextToolbar extends HTMLElementBase {
     if (!editor) return false;
     if (
       editor.IsReadOnly &&
-      !["PagePreview", "ReviewChanges", "Copy"].includes(command)
+      !["PagePreview", "ReviewChanges", "Copy", "WordCount"].includes(command)
     )
       return false;
     const engine = editor.Engine,
@@ -779,6 +793,285 @@ export class RichTextToolbar extends HTMLElementBase {
             ),
         );
         break;
+      case "Formula":
+        this.prompt(
+          "Table formula",
+          [
+            {
+              name: "expression",
+              label: "Formula (A1, ranges, ABOVE, BELOW, LEFT or RIGHT)",
+              value: "SUM(ABOVE)",
+            },
+            {
+              name: "picture",
+              label: "Number format (optional)",
+              value: "#,##0.00",
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              engine.Change(() => {
+                features.InsertFormula(
+                  data.expression,
+                  data.picture || undefined,
+                );
+                const result = features.UpdateFields(editor.GetFieldContext());
+                this.status =
+                  result.Unresolved[0]?.Reason ?? "Formula inserted.";
+              }),
+            ),
+        );
+        break;
+      case "SortTable": {
+        if (parameter)
+          return mutate(() => engine.SortTable(parameter as TableSortOptions));
+        this.prompt(
+          "Sort table",
+          [
+            ...[1, 2, 3].flatMap((key) => [
+              {
+                name: `column${key}`,
+                label:
+                  key === 1
+                    ? "Sort by column (1-based)"
+                    : `Then by column ${key} (0 = unused)`,
+                value: key === 1 ? "1" : "0",
+                type: "number",
+              },
+              {
+                name: `type${key}`,
+                label: `Key ${key} data type`,
+                value: "Text",
+                options: ["Text", "Number", "Date"],
+              },
+              {
+                name: `order${key}`,
+                label: `Key ${key} order`,
+                value: "Ascending",
+                options: ["Ascending", "Descending"],
+              },
+            ]),
+            {
+              name: "headers",
+              label: "Header rows (blank = marked headers)",
+              value: "",
+              type: "number",
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              engine.SortTable({
+                Keys: [1, 2, 3]
+                  .filter(
+                    (key) => key === 1 || Number(data[`column${key}`]) !== 0,
+                  )
+                  .map((key) => ({
+                    Column: Number(data[`column${key}`]) - 1,
+                    Type: data[`type${key}`] as "Text" | "Number" | "Date",
+                    Descending: data[`order${key}`] === "Descending",
+                  })),
+                HeaderRows:
+                  data.headers === "" ? undefined : Number(data.headers),
+              }),
+            ),
+        );
+        break;
+      }
+      case "RepeatHeaderRows":
+        this.prompt(
+          "Repeat header rows",
+          [
+            {
+              name: "count",
+              label: "Leading header rows (0 = none)",
+              value: "1",
+              type: "number",
+            },
+          ],
+          (data) => mutate(() => engine.SetTableHeaderRows(Number(data.count))),
+        );
+        break;
+      case "Caption":
+        this.prompt(
+          "Insert caption",
+          [
+            { name: "label", label: "Caption label", value: "Figure" },
+            {
+              name: "text",
+              label: "Caption text",
+              value: "",
+              type: "textarea",
+            },
+            {
+              name: "format",
+              label: "Numbering",
+              value: "ARABIC",
+              options: ["ARABIC", "ROMAN", "roman", "ALPHABETIC", "alphabetic"],
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              features.InsertCaption(
+                {
+                  Label: data.label,
+                  Text: data.text,
+                  NumberFormat: data.format as CaptionOptions["NumberFormat"],
+                },
+                editor.GetFieldContext(),
+              ),
+            ),
+        );
+        break;
+      case "CrossReference": {
+        const marks = engine.Annotations.filter(
+          (annotation) => annotation.Kind === "Bookmark",
+        );
+        if (!marks.length)
+          throw new Error(
+            "Insert a caption or bookmark before adding a cross-reference.",
+          );
+        this.prompt(
+          "Insert cross-reference",
+          [
+            {
+              name: "bookmark",
+              label: "Reference target",
+              value: String(marks[0].Data.Name),
+              options: marks.map((mark) => ({
+                Value: String(mark.Data.Name),
+                Label: `${editor.Document.Text.slice(mark.Start, mark.End).slice(0, 80) || "Bookmark"} — ${mark.Data.Name}`,
+              })),
+            },
+            {
+              name: "kind",
+              label: "Reference display",
+              value: "Text",
+              options: ["Text", "Page number"],
+            },
+            {
+              name: "hyperlink",
+              label: "Link in Word",
+              value: "Yes",
+              options: ["Yes", "No"],
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              features.InsertCrossReference(
+                data.bookmark,
+                {
+                  PageNumber: data.kind === "Page number",
+                  Hyperlink: data.hyperlink === "Yes",
+                },
+                editor.GetFieldContext(),
+              ),
+            ),
+        );
+        break;
+      }
+      case "TableOfFigures":
+        this.prompt(
+          "Insert table of figures",
+          [
+            { name: "label", label: "Caption label", value: "Figure" },
+            { name: "title", label: "Title", value: "Table of Figures" },
+            {
+              name: "pages",
+              label: "Include measured page numbers",
+              value: "Yes",
+              options: ["Yes", "No"],
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              features.InsertTableOfFigures(
+                data.label,
+                { Title: data.title, IncludePageNumbers: data.pages === "Yes" },
+                editor.GetFieldContext(),
+              ),
+            ),
+        );
+        break;
+      case "FieldCode": {
+        const field = features.GetSelectedField();
+        this.prompt(
+          field ? "Edit field code" : "Insert field code",
+          [
+            {
+              name: "instruction",
+              label: "Field instruction",
+              value: field?.props.Field.Instruction ?? '= SUM(1,2) \\# "0.00"',
+              type: "textarea",
+            },
+          ],
+          (data) =>
+            mutate(() =>
+              engine.Change(() => {
+                if (field) features.SetFieldCode(field.id, data.instruction);
+                else features.InsertFieldCode(data.instruction);
+                const result = features.UpdateFields(editor.GetFieldContext());
+                this.status = result.Unresolved[0]?.Reason ?? "Field updated.";
+              }),
+            ),
+        );
+        break;
+      }
+      case "LockField":
+      case "UnlockField":
+      case "UnlinkField": {
+        const field = features.GetSelectedField();
+        if (!field) throw new Error("Place the caret in a field first.");
+        return mutate(() =>
+          command === "UnlinkField"
+            ? features.UnlinkField(field.id)
+            : features.SetFieldLocked(field.id, command === "LockField"),
+        );
+      }
+      case "WordCount": {
+        const dialog = this.createDialog(),
+          heading = this.ownerDocument.createElement("h2");
+        heading.textContent = "Word count";
+        dialog.append(heading);
+        const selection = !engine.Selection.IsEmpty;
+        const sources = [
+          ["Document", features.GetStatistics()],
+          ...(selection
+            ? [
+                [
+                  "Selection",
+                  features.GetStatistics({
+                    Start: engine.Selection.Start.Offset,
+                    End: engine.Selection.End.Offset,
+                  }),
+                ],
+              ]
+            : []),
+        ] as const;
+        for (const [name, stats] of sources) {
+          const section = this.ownerDocument.createElement("section"),
+            title = this.ownerDocument.createElement("h3"),
+            list = this.ownerDocument.createElement("dl");
+          title.textContent = String(name);
+          section.append(title, list);
+          for (const [key, value] of Object.entries(stats)) {
+            const term = this.ownerDocument.createElement("dt"),
+              detail = this.ownerDocument.createElement("dd");
+            term.textContent = key.replace(/([a-z])([A-Z])/g, "$1 $2");
+            detail.textContent = String(value);
+            list.append(term, detail);
+          }
+          dialog.append(section);
+        }
+        const note = this.ownerDocument.createElement("p");
+        note.textContent =
+          "Main-story Unicode word segmentation. Characters exclude paragraph breaks and embedded objects. Lines are logical, not printed lines; notes and headers are excluded.";
+        const close = this.ownerDocument.createElement("button");
+        close.textContent = "Close";
+        close.onclick = () => dialog.close();
+        dialog.append(note, close);
+        dialog.showModal();
+        break;
+      }
       case "Field":
         this.prompt(
           "Insert field",
@@ -799,23 +1092,39 @@ export class RichTextToolbar extends HTMLElementBase {
                 "TITLE",
                 "AUTHOR",
                 "FILENAME",
+                "DOCPROPERTY",
+                "DOCVARIABLE",
+                "NUMWORDS",
+                "NUMCHARS",
+                "NUMPARAS",
+                "SECTION",
+                "SECTIONPAGES",
+                "CREATEDATE",
+                "SAVEDATE",
               ],
             },
             {
               name: "argument",
-              label: "Bookmark, merge column, or sequence name",
+              label:
+                "Bookmark, merge column, sequence, property or variable name",
               value: "",
             },
           ],
           (data) =>
-            mutate(() => {
-              features.InsertField(data.type as FieldType, data.argument);
-              features.UpdateFields();
-            }),
+            mutate(() =>
+              engine.Change(() => {
+                features.InsertField(data.type as FieldType, data.argument);
+                // Insertion is not a request to recalculate existing page fields.
+                // A batched change can still expose the previous layout revision.
+                features.UpdateFields();
+              }),
+            ),
         );
         break;
       case "TableOfContents":
-        mutate(() => features.InsertTableOfContents());
+        mutate(() =>
+          features.InsertTableOfContents({}, editor.GetFieldContext()),
+        );
         break;
       case "Footnote":
       case "Endnote":
@@ -960,12 +1269,12 @@ export class RichTextToolbar extends HTMLElementBase {
         break;
       case "UpdateFields":
         mutate(() => {
-          const result = features.UpdateFields();
-          this.status = `${result.Updated} fields updated${result.Unresolved.length ? `; ${result.Unresolved.length} need page or merge data` : ""}`;
+          const result = features.UpdateFields(editor.GetFieldContext());
+          this.status = `${result.Updated} fields updated${result.Unresolved.length ? `; ${result.Unresolved.length} unresolved: ${result.Unresolved[0].Reason}` : ""}`;
         });
         break;
       case "UpdateTableOfContents":
-        mutate(() => features.UpdateTableOfContents());
+        mutate(() => features.UpdateTableOfContents(editor.GetFieldContext()));
         break;
       case "MailMerge":
         this.prompt(
@@ -1079,7 +1388,7 @@ export class RichTextToolbar extends HTMLElementBase {
       label: string;
       value: string;
       type?: string;
-      options?: string[];
+      options?: (string | { Value: string; Label: string })[];
     }[],
     submit: (data: Record<string, string>) => unknown,
   ) {

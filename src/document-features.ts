@@ -1,3 +1,18 @@
+import {
+  parseFieldCode,
+  parseFieldNumber,
+  formatFieldNumber,
+  formatFieldDate,
+  formatFieldText,
+  type ParsedFieldCode,
+} from "./field-code.js";
+import { validateFormula } from "./formula.js";
+import { TableFormulaEvaluator } from "./table-formulas.js";
+import {
+  getDocumentStatistics,
+  type DocumentStatisticsOptions,
+  type DocumentStatistics,
+} from "./document-statistics.js";
 import { type PageSetupOptions } from "./page-setup.js";
 import {
   FlowDocument,
@@ -21,7 +36,18 @@ export type FieldType =
   | "SEQ"
   | "TITLE"
   | "AUTHOR"
-  | "FILENAME";
+  | "FILENAME"
+  | "="
+  | "IF"
+  | "DOCPROPERTY"
+  | "DOCVARIABLE"
+  | "NUMWORDS"
+  | "NUMCHARS"
+  | "NUMPARAS"
+  | "SECTION"
+  | "SECTIONPAGES"
+  | "CREATEDATE"
+  | "SAVEDATE";
 export interface FieldDefinition {
   Type: FieldType;
   Instruction: string;
@@ -36,6 +62,12 @@ export interface FieldContext {
   Data?: Record<string, unknown>;
   FileName?: string;
   PageOfNode?: (id: string) => number | undefined;
+  SectionNumber?: number;
+  SectionPageCount?: number;
+  SectionOfNode?: (id: string) => number | undefined;
+  SectionPagesOfNode?: (id: string) => number | undefined;
+  Properties?: Record<string, string | number | boolean>;
+  Variables?: Record<string, string | number | boolean>;
 }
 export interface FieldUpdateResult {
   /** Exact main-story edits in pre-update UTF-16 coordinates, for pointer/history mapping. */
@@ -51,6 +83,20 @@ export interface TableOfContentsOptions {
   MaxLevel?: number;
   Title?: string;
   IncludePageNumbers?: boolean;
+  /** A caption label switches the contents index to a list of figures/tables. */
+  CaptionLabel?: string;
+}
+export interface CaptionOptions {
+  Label?: string;
+  Text?: string;
+  NumberFormat?: "ARABIC" | "roman" | "ROMAN" | "alphabetic" | "ALPHABETIC";
+  Separator?: string;
+}
+export interface CaptionReference {
+  Id: string;
+  Bookmark: string;
+  NumberBookmark: string;
+  LabelNumberBookmark: string;
 }
 export type StoryKind =
   | "Headers"
@@ -196,59 +242,58 @@ export function createField(
   );
   field.SetValue("Field", {
     Type: type,
-    Instruction: `${type}${argument ? ` ${JSON.stringify(argument)}` : ""}${format ? ` \\* ${format}` : ""}`,
+    Instruction: `${type}${argument ? ` ${type === "=" ? argument : JSON.stringify(argument)}` : ""}${format ? ` \\* ${format}` : ""}`,
     Argument: argument,
     ...(format ? { Format: format } : {}),
   });
   return field;
 }
 
-function definition(node: DocumentNode): FieldDefinition | null {
-  const field = node.props.Field;
-  if (!field || typeof field.Instruction !== "string") return null;
-  const tokens = field.Instruction.match(/"(?:[^"\\]|\\.)*"|\S+/g) ?? [];
-  const decode = (s: string) => {
-    try {
-      return s.startsWith('"') ? JSON.parse(s) : s;
-    } catch {
-      return s;
-    }
-  };
-  const type = String(field.Type ?? tokens[0] ?? "").toUpperCase() as FieldType;
-  const arg = tokens[1] && !tokens[1].startsWith("\\") ? decode(tokens[1]) : "";
-  const switchIndex = tokens.indexOf("\\*");
-  return {
-    Type: type,
-    Instruction: field.Instruction,
-    Argument: field.Argument ?? arg,
-    Format:
-      field.Format ?? (switchIndex >= 0 ? tokens[switchIndex + 1] : undefined),
-  };
+/** Retain an explicit field instruction and cached display without executing imported code. */
+export function createFieldFromInstruction(
+  instruction: string,
+  cachedText = "…",
+): Span {
+  const parsed = parseFieldCode(instruction);
+  if (!parsed.Type) throw new SyntaxError("A field instruction is required.");
+  if (parsed.Type === "=") validateFormula(parsed.Expression ?? "");
+  const field = new Span(new Run(cachedText));
+  field.SetValue("Field", { Type: parsed.Type, Instruction: instruction });
+  return field;
 }
 
-/** Resolve fields on a detached canonical tree. Unresolvable fields retain their cached text. */
+/** Resolve fields on a detached canonical tree. Failed/locked fields keep their cached text.
+ * REF reads one pre-update snapshot. Formulas use memoized, current numeric field dependencies.
+ */
 export function updateDocumentFields(
   root: DocumentNode,
   context: FieldContext = {},
 ): FieldUpdateResult {
   const result: FieldUpdateResult = {
-      Updated: 0,
-      Unresolved: [],
-      TextChanges: [],
-    },
-    sequences = new Map<string, number>(),
-    byId = new Map<string, DocumentNode>(),
-    sourceTextById = new Map<string, string>(),
-    sourceRanges = new WeakMap<DocumentNode, { Start: number; End: number }>(),
-    changes: FieldTextSplice[] = [];
-  // References resolve against one immutable text snapshot even when an earlier field changes length.
+    Updated: 0,
+    Unresolved: [],
+    TextChanges: [],
+  };
+  const roots = storyRoots(root),
+    byId = new Map<string, DocumentNode>();
+  const sourceTextById = new Map<string, string>();
+  const sourceRanges = new WeakMap<
+    DocumentNode,
+    { Start: number; End: number }
+  >();
+  const changes: FieldTextSplice[] = [],
+    fields: DocumentNode[] = [];
   const originalText = plainText(root),
-    originalBlocks = textBlocks(root),
-    originalAnnotations = copy(root.props.Annotations ?? []);
-  walk(root, (node) => {
+    originalBlocks = textBlocks(root);
+  const originalAnnotations = copy(root.props.Annotations ?? []);
+  // Only outer fields own main-story replacement ranges. Nested result fields are not edited twice.
+  const visit = (node: DocumentNode, insideField = false) => {
     byId.set(node.id, node);
-    sourceTextById.set(node.id, text(node));
-  });
+    if (node.props.Field && !insideField) fields.push(node);
+    for (const child of node.children ?? [])
+      visit(child, insideField || !!node.props.Field);
+  };
+  for (const story of roots) visit(story);
   for (const block of originalBlocks) {
     let offset = block.start;
     const index = (node: DocumentNode) => {
@@ -258,6 +303,9 @@ export function updateDocumentFields(
           "Run",
           "LineBreak",
           "Image",
+          "Equation",
+          "Figure",
+          "Floater",
           "InlineUIContainer",
           "BlockUIContainer",
         ].includes(node.type)
@@ -268,44 +316,185 @@ export function updateDocumentFields(
     };
     index(block.node);
   }
-  const now = context.Now ?? new Date();
-  for (const story of storyRoots(root))
-    walk(story, (node) => {
-      const field = definition(node);
-      if (!field) return;
-      if (!["Span", "Run"].includes(node.type)) {
-        result.Unresolved.push({
-          Id: node.id,
-          Instruction: field.Instruction,
-          Reason: "Fields require a Span or Run node.",
-        });
-        return;
+  const codes = new Map<string, ParsedFieldCode>(),
+    failures = new Map<string, string>();
+  const sequences = new Map<string, number>(),
+    sequenceValues = new Map<string, number>();
+  const numericValues = new Map<string, number>(),
+    values = new Map<string, string | undefined>(),
+    resolving = new Set<string>();
+  for (const node of fields) {
+    try {
+      if (!["Span", "Run"].includes(node.type))
+        throw new TypeError("Fields require a Span or Run node.");
+      const field = node.props.Field;
+      const parsed = parseFieldCode(
+        String(field.Instruction ?? field.Type ?? ""),
+      );
+      // Legacy structured fields remain supported when no explicit argument/switch was supplied.
+      if (!parsed.Arguments.length && field.Argument && parsed.Type !== "=")
+        parsed.Arguments.push(String(field.Argument));
+      if (!parsed.Switches["*"] && field.Format)
+        parsed.Switches["*"] = [String(field.Format)];
+      codes.set(node.id, parsed);
+      if (parsed.Type === "SEQ") {
+        const name = (parsed.Arguments[0] ?? "").toLocaleLowerCase("en");
+        if (!name) throw new SyntaxError("SEQ requires a sequence identifier.");
+        if (parsed.Switches.s)
+          throw new Error(
+            "Heading-based sequence restarts are not implemented.",
+          );
+        const current = sequences.get(name) ?? 0;
+        const reset = parsed.Switches.r?.[0];
+        let number =
+          reset !== undefined
+            ? Number(reset)
+            : parsed.Switches.c
+              ? current
+              : current + 1;
+        if (node.props.Field.Locked === true)
+          number = parseFieldNumber(text(node)) ?? number;
+        if (
+          !Number.isSafeInteger(number) ||
+          number < 0 ||
+          (parsed.Switches.r && reset === undefined)
+        )
+          throw new RangeError("SEQ restart must be a nonnegative integer.");
+        sequences.set(name, number);
+        sequenceValues.set(node.id, number);
       }
-      let value: string | undefined;
-      const arg = field.Argument ?? "";
-      const numeric = (n: number | undefined) =>
-        n === undefined ? undefined : numberFormat(n, field.Format);
-      switch (field.Type) {
+    } catch (error) {
+      failures.set(
+        node.id,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  const sourceText = (target: DocumentNode) => {
+    if (!sourceTextById.has(target.id))
+      sourceTextById.set(target.id, text(target));
+    return sourceTextById.get(target.id)!;
+  };
+  const bookmark = (name: string) =>
+    originalAnnotations.find(
+      (a: any) =>
+        a.Kind === "Bookmark" && (a.Data?.Name === name || a.Id === name),
+    );
+  const own = (
+    record: any,
+    name: string,
+  ): string | number | boolean | undefined => {
+    if (!record || !Object.hasOwn(record, name)) return undefined;
+    const value = record[name];
+    return ["string", "boolean"].includes(typeof value) ||
+      (typeof value === "number" && Number.isFinite(value))
+      ? value
+      : undefined;
+  };
+  const variable = (name: string) =>
+    own(context.Variables, name) ?? own(root.props.DocumentVariables, name);
+  const property = (name: string) =>
+    own(context.Properties, name) ??
+    own(root.props.CustomProperties, name) ??
+    own(root.props, name);
+  const namedNumber = (name: string) => {
+    const target = bookmark(name),
+      value = target
+        ? originalText.slice(target.Start, target.End)
+        : (variable(name) ?? own(context.Data, name));
+    return value === undefined ? undefined : parseFieldNumber(String(value));
+  };
+  const formulas = new TableFormulaEvaluator(
+    roots,
+    (node) => {
+      const display = resolve(node);
+      if (display === undefined)
+        throw new Error(`Unresolved formula dependency: ${node.id}`);
+      return numericValues.get(node.id) ?? display;
+    },
+    namedNumber,
+  );
+  const now = context.Now ?? new Date();
+  let statistics: DocumentStatistics | undefined;
+  const resolve = (node: DocumentNode): string | undefined => {
+    if (values.has(node.id)) return values.get(node.id);
+    if (node.props.Field?.Locked === true) {
+      const cached = text(node);
+      values.set(node.id, cached);
+      return cached;
+    }
+    if (failures.has(node.id)) return undefined;
+    if (resolving.has(node.id))
+      throw new Error("Circular field formula dependency.");
+    if (resolving.size >= 64)
+      throw new RangeError("Field dependency depth exceeds 64.");
+    resolving.add(node.id);
+    try {
+      const code = codes.get(node.id);
+      if (!code) throw new Error("Nested or unsupported field dependency.");
+      const arg = code.Arguments[0] ?? "",
+        general = code.Switches["*"] ?? [];
+      let value: string | number | boolean | undefined;
+      switch (code.Type) {
+        case "=":
+          value = formulas.Evaluate(node, code.Expression ?? "");
+          break;
         case "PAGE":
-          value = numeric(context.PageOfNode?.(node.id) ?? context.PageNumber);
+          value = context.PageOfNode?.(node.id) ?? context.PageNumber;
           break;
         case "NUMPAGES":
-          value = numeric(context.PageCount);
+          value = context.PageCount;
           break;
-        case "DATE":
+        case "SECTION":
+          value = context.SectionOfNode?.(node.id) ?? context.SectionNumber;
+          break;
+        case "SECTIONPAGES":
           value =
-            field.Format === "ISO"
-              ? now.toISOString().slice(0, 10)
-              : now.toLocaleDateString(context.Locale ?? "en", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  timeZone: "UTC",
-                });
+            context.SectionPagesOfNode?.(node.id) ?? context.SectionPageCount;
           break;
+        case "NUMWORDS":
+        case "NUMCHARS":
+        case "NUMPARAS": {
+          statistics ??= getDocumentStatistics(root, {
+            Locale: context.Locale,
+          });
+          value =
+            statistics[
+              code.Type === "NUMWORDS"
+                ? "Words"
+                : code.Type === "NUMCHARS"
+                  ? "Characters"
+                  : "Paragraphs"
+            ];
+          break;
+        }
+        case "DATE":
         case "TIME":
-          value = now.toISOString().slice(11, 19);
+        case "CREATEDATE":
+        case "SAVEDATE": {
+          const date =
+            code.Type === "CREATEDATE"
+              ? new Date(root.props.CreatedAt ?? NaN)
+              : code.Type === "SAVEDATE"
+                ? new Date(root.props.ModifiedAt ?? NaN)
+                : now;
+          const picture = code.Switches["@"]?.[0];
+          value = picture
+            ? formatFieldDate(date, picture, context.Locale)
+            : general.includes("ISO")
+              ? date.toISOString().slice(0, 10)
+              : code.Type === "TIME"
+                ? date.toISOString().slice(11, 19)
+                : date.toLocaleDateString(context.Locale ?? "en", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                    timeZone: "UTC",
+                  });
+          if (!Number.isFinite(date.getTime()))
+            throw new Error("Missing or invalid date property.");
           break;
+        }
         case "TITLE":
           value = String(root.props.Title ?? "");
           break;
@@ -315,74 +504,155 @@ export function updateDocumentFields(
         case "FILENAME":
           value = context.FileName;
           break;
-        case "MERGEFIELD":
-          if (
-            context.Data &&
-            Object.hasOwn(context.Data, arg) &&
-            ["string", "number", "boolean"].includes(typeof context.Data[arg])
-          )
-            value = String(context.Data[arg]);
+        case "DOCPROPERTY":
+          value = property(arg);
           break;
-        case "SEQ": {
-          const n = (sequences.get(arg) ?? 0) + 1;
-          sequences.set(arg, n);
-          value = numeric(n);
+        case "DOCVARIABLE":
+          value = variable(arg);
+          break;
+        case "MERGEFIELD":
+          value = own(context.Data, arg);
+          break;
+        case "SEQ":
+          value = sequenceValues.get(node.id);
+          break;
+        case "IF": {
+          if (code.Arguments.length !== 5)
+            throw new SyntaxError(
+              "IF requires left, operator, right, true text and false text; nested fields are not supported.",
+            );
+          const operand = (index: number) => {
+            const source = code.Arguments[index]!;
+            return code.Quoted[index]
+              ? source
+              : (parseFieldNumber(source) ??
+                  own(context.Data, source) ??
+                  variable(source) ??
+                  source);
+          };
+          const left = operand(0),
+            right = operand(2);
+          const ln = parseFieldNumber(String(left)),
+            rn = parseFieldNumber(String(right));
+          const order =
+            ln !== undefined && rn !== undefined
+              ? Math.sign(ln - rn)
+              : new Intl.Collator(context.Locale ?? "en", {
+                  sensitivity: "base",
+                }).compare(String(left), String(right));
+          const comparisons: Record<string, boolean> = {
+            "=": order === 0,
+            "<>": order !== 0,
+            "<": order < 0,
+            ">": order > 0,
+            "<=": order <= 0,
+            ">=": order >= 0,
+          };
+          const operator = code.Arguments[1]!;
+          if (!Object.hasOwn(comparisons, operator))
+            throw new SyntaxError("Unsupported IF comparison operator.");
+          value = code.Arguments[comparisons[operator] ? 3 : 4];
           break;
         }
         case "REF":
         case "PAGEREF": {
           const target = byId.get(arg),
-            bookmark = originalAnnotations.find(
-              (a: any) =>
-                a.Kind === "Bookmark" && (a.Data?.Name === arg || a.Id === arg),
-            );
-          if (field.Type === "REF")
+            mark = bookmark(arg);
+          if (code.Type === "REF")
             value = target
-              ? sourceTextById.get(target.id)
-              : bookmark
-                ? originalText.slice(bookmark.Start, bookmark.End)
+              ? sourceText(target)
+              : mark
+                ? originalText.slice(mark.Start, mark.End)
                 : undefined;
           else {
             let page = target ? context.PageOfNode?.(target.id) : undefined;
-            if (!target && bookmark) {
+            if (!target && mark) {
               const block = originalBlocks.find(
-                (b) => bookmark.Start >= b.start && bookmark.Start <= b.end,
+                (b) => mark.Start >= b.start && mark.Start <= b.end,
               );
               if (block) page = context.PageOfNode?.(block.node.id);
-              // Consumers may index rendered runs instead of paragraphs; try containing descendants too.
               if (page === undefined && block)
                 walk(block.node, (candidate) => {
                   const range = sourceRanges.get(candidate);
                   if (
                     page === undefined &&
                     range &&
-                    bookmark.Start >= range.Start &&
-                    bookmark.Start <= range.End
+                    mark.Start >= range.Start &&
+                    mark.Start <= range.End
                   )
                     page = context.PageOfNode?.(candidate.id);
                 });
             }
-            value = numeric(page);
+            value = page;
           }
           break;
         }
+        default:
+          throw new Error(
+            "Unsupported field instruction; cached text retained.",
+          );
       }
-      if (value === undefined) {
-        result.Unresolved.push({
-          Id: node.id,
-          Instruction: field.Instruction,
-          Reason: "Missing field data or unsupported instruction.",
-        });
-        return;
+      if (value === undefined)
+        throw new Error("Missing field data or unsupported instruction.");
+      let display: string;
+      const number =
+        typeof value === "number"
+          ? value
+          : code.Switches["#"]
+            ? parseFieldNumber(String(value))
+            : undefined;
+      if (number !== undefined) {
+        if (!Number.isFinite(number))
+          throw new RangeError("A field result is not finite.");
+        numericValues.set(node.id, number);
+        display = code.Switches["#"]
+          ? formatFieldNumber(
+              number,
+              code.Switches["#"][0] ?? "",
+              context.Locale,
+            )
+          : numberFormat(
+              number,
+              general.find((f) =>
+                ["roman", "ROMAN", "alphabetic", "ALPHABETIC"].includes(f),
+              ),
+            );
+      } else {
+        if (code.Switches["#"])
+          throw new Error("Numeric picture requires a numeric field result.");
+        display = String(value);
       }
-      if (text(node) !== value) {
-        const range = sourceRanges.get(node);
-        if (range) changes.push({ ...range, NewLength: value.length });
-        if (node.type === "Run") {
-          node.text = value;
-          result.Updated++;
-          return;
-        }
+      if (code.Type === "SEQ" && code.Switches.h) display = "";
+      display = formatFieldText(display, general, context.Locale);
+      values.set(node.id, display);
+      return display;
+    } catch (error) {
+      failures.set(
+        node.id,
+        error instanceof Error ? error.message : String(error),
+      );
+      values.set(node.id, undefined);
+      return undefined;
+    } finally {
+      resolving.delete(node.id);
+    }
+  };
+  // Evaluate before changing any cache, so dependency traversal cannot observe half-written fields.
+  for (const node of fields) resolve(node);
+  for (const node of fields) {
+    if (node.props.Field.Locked === true) continue;
+    const value = values.get(node.id);
+    if (value === undefined) {
+      result.Unresolved.push({
+        Id: node.id,
+        Instruction: String(node.props.Field.Instruction ?? ""),
+        Reason: failures.get(node.id) ?? "Missing field data.",
+      });
+    } else if (text(node) !== value) {
+      const range = sourceRanges.get(node);
+      if (range) changes.push({ ...range, NewLength: value.length });
+      if (node.type === "Run") node.text = value;
+      else {
         const previous = node.children?.[0];
         node.children = [
           {
@@ -392,16 +662,17 @@ export function updateDocumentFields(
             text: value,
           },
         ];
-        result.Updated++;
       }
-    });
+      result.Updated++;
+    }
+  }
   mapFieldAnnotations(root, changes);
   result.TextChanges = changes
     .sort((a, b) => a.Start - b.Start || a.End - b.End)
-    .map((change) => ({
-      Start: change.Start,
-      RemovedLength: change.End - change.Start,
-      InsertedLength: change.NewLength,
+    .map((c) => ({
+      Start: c.Start,
+      RemovedLength: c.End - c.Start,
+      InsertedLength: c.NewLength,
     }));
   return result;
 }
@@ -416,14 +687,268 @@ export class DocumentFeatures {
   InsertField(type: FieldType, argument = "", format?: string): void {
     this.Engine.InsertNode(createField(type, argument, format).ToJSON());
   }
+  InsertFieldCode(instruction: string, cachedText = "…"): string {
+    return this.Engine.InsertNode(
+      createFieldFromInstruction(instruction, cachedText).ToJSON(),
+    );
+  }
+  InsertFormula(expression = "SUM(ABOVE)", picture?: string): string {
+    validateFormula(expression);
+    if (picture) formatFieldNumber(0, picture);
+    return this.InsertFieldCode(
+      `= ${expression.trim().replace(/^=/, "")}${picture ? ` \\# ${JSON.stringify(picture)}` : ""}`,
+    );
+  }
+  /** Detached outer field at a main-story caret/range, including its trailing boundary. */
+  GetSelectedField(): DocumentNode | null {
+    const start = this.Engine.Selection.Start.Offset,
+      end = this.Engine.Selection.End.Offset;
+    let found: DocumentNode | null = null;
+    for (const block of textBlocks(this.Engine.Document.ToJSON())) {
+      if (block.end < start || block.start > end) continue;
+      let offset = block.start;
+      const visit = (node: DocumentNode) => {
+        const size = inlineText(node).length;
+        if (node.props.Field) {
+          if (
+            start >= offset &&
+            end <= offset + size &&
+            (!found || start < offset + size)
+          )
+            found = node;
+          offset += size;
+        } else if (
+          [
+            "Run",
+            "LineBreak",
+            "Image",
+            "Equation",
+            "Figure",
+            "Floater",
+            "InlineUIContainer",
+            "BlockUIContainer",
+          ].includes(node.type)
+        )
+          offset += size;
+        else for (const child of node.children ?? []) visit(child);
+      };
+      visit(block.node);
+    }
+    return found;
+  }
+  /** Replace only the instruction, preserving the cached display and lock state until update. */
+  SetFieldCode(id: string, instruction: string): void {
+    const definition =
+      createFieldFromInstruction(instruction).ToJSON().props.Field;
+    const root = this.Engine.Document.ToJSON();
+    let found = false;
+    for (const story of storyRoots(root))
+      walk(story, (node) => {
+        if (node.id === id && node.props.Field) {
+          node.props.Field = {
+            ...definition,
+            Locked: node.props.Field.Locked === true,
+            Dirty: true,
+          };
+          found = true;
+        }
+      });
+    if (!found) throw new Error("Field was not found.");
+    this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
+      MapAnnotations: false,
+    });
+  }
+  SetFieldLocked(id: string, locked: boolean): void {
+    const root = this.Engine.Document.ToJSON();
+    let target: DocumentNode | undefined;
+    for (const story of storyRoots(root))
+      walk(story, (node) => {
+        if (node.id === id) target = node;
+      });
+    if (!target?.props.Field) throw new Error("Field was not found.");
+    target.props.Field.Locked = !!locked;
+    this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
+      MapAnnotations: false,
+    });
+  }
+  UnlinkField(id: string): void {
+    const root = this.Engine.Document.ToJSON();
+    let found = false;
+    for (const story of storyRoots(root))
+      walk(story, (node) => {
+        if (node.id === id && node.props.Field) {
+          delete node.props.Field;
+          found = true;
+        }
+      });
+    if (!found) throw new Error("Field was not found.");
+    this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
+      MapAnnotations: false,
+    });
+  }
+  SetDocumentVariable(name: string, value: string | number | boolean): void {
+    if (typeof name !== "string" || !name.trim() || name.length > 255)
+      throw new TypeError("A variable name of 1–255 characters is required.");
+    if (
+      !["string", "number", "boolean"].includes(typeof value) ||
+      (typeof value === "number" && !Number.isFinite(value))
+    )
+      throw new TypeError("Variables require a finite scalar value.");
+    const root = this.Engine.Document.ToJSON();
+    root.props.DocumentVariables = {
+      ...(root.props.DocumentVariables ?? {}),
+      [name]: value,
+    };
+    this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
+      MapAnnotations: false,
+    });
+  }
+  GetStatistics(options: DocumentStatisticsOptions = {}): DocumentStatistics {
+    return getDocumentStatistics(this.Engine.Document, options);
+  }
+  /** Insert an independent caption paragraph and native bookmark targets as one undo action. */
+  InsertCaption(
+    options: CaptionOptions = {},
+    context: FieldContext = {},
+  ): CaptionReference {
+    const label = options.Label ?? "Figure",
+      content = options.Text ?? "Caption",
+      separator = options.Separator ?? ": ";
+    if (!label.trim() || label.length > 64 || /[\r\n\u0000-\u001f]/.test(label))
+      throw new TypeError(
+        "A caption label of 1–64 printable characters is required.",
+      );
+    if (
+      options.NumberFormat &&
+      !["ARABIC", "roman", "ROMAN", "alphabetic", "ALPHABETIC"].includes(
+        options.NumberFormat,
+      )
+    )
+      throw new TypeError("Unsupported caption number format.");
+    const sequence = createField("SEQ", label, options.NumberFormat);
+    const paragraph = new Paragraph([
+      new Run(label + " "),
+      sequence,
+      new Run(separator + content),
+    ]);
+    paragraph.SetValue("Caption", { Label: label });
+    paragraph.SetValue("StyleName", "Caption");
+    const token = new Run().Id;
+    paragraph.SetValue("CaptionInstance", token);
+    const reference: CaptionReference = {
+      Id: "",
+      Bookmark: "",
+      NumberBookmark: "",
+      LabelNumberBookmark: "",
+    };
+    this.Engine.Change(() => {
+      // A section avoids merging a caption into text on either side of the insertion point.
+      this.Engine.InsertNode(new Section(paragraph).ToJSON());
+      this.UpdateFields(context);
+      const root = this.Engine.Document.ToJSON();
+      const block = textBlocks(root).find(
+        (b) => b.node.props.CaptionInstance === token,
+      )!;
+      reference.Id = block.node.id;
+      const prefix =
+        "_rt" + block.node.id.replace(/[^a-zA-Z0-9]/g, "").slice(-28);
+      reference.Bookmark = prefix + "All";
+      reference.NumberBookmark = prefix + "Num";
+      reference.LabelNumberBookmark = prefix + "Label";
+      const field = block.node.children!.find((n) => n.props.Field)!;
+      const numberLength = text(field).length,
+        selection = {
+          Start: this.Engine.Selection.Start.Offset,
+          End: this.Engine.Selection.End.Offset,
+        };
+      for (const [name, start, end] of [
+        [reference.Bookmark, block.start, block.end],
+        [
+          reference.NumberBookmark,
+          block.start + label.length + 1,
+          block.start + label.length + 1 + numberLength,
+        ],
+        [
+          reference.LabelNumberBookmark,
+          block.start,
+          block.start + label.length + 1 + numberLength,
+        ],
+      ] as [string, number, number][]) {
+        this.Engine.Select(start, end);
+        this.Engine.AddBookmark(name);
+      }
+      this.Engine.Select(selection.Start, selection.End);
+      this.Engine.SetElementProperty(reference.Id, "Caption", {
+        Label: label,
+        ...reference,
+      });
+    });
+    return reference;
+  }
+  InsertCrossReference(
+    bookmarkName: string,
+    options: { PageNumber?: boolean; Hyperlink?: boolean } = {},
+    context: FieldContext = {},
+  ): string {
+    if (
+      !this.Engine.Annotations.some(
+        (a) => a.Kind === "Bookmark" && a.Data.Name === bookmarkName,
+      )
+    )
+      throw new Error("Cross-reference bookmark was not found.");
+    let id = "";
+    this.Engine.Change(() => {
+      id = this.InsertFieldCode(
+        `${options.PageNumber ? "PAGEREF" : "REF"} ${JSON.stringify(bookmarkName)}${options.Hyperlink === false ? "" : " \\h"}`,
+      );
+      this.UpdateFields(context);
+    });
+    return id;
+  }
+  InsertTableOfFigures(
+    label = "Figure",
+    options: Omit<TableOfContentsOptions, "MaxLevel" | "CaptionLabel"> = {},
+    context: FieldContext = {},
+  ): void {
+    if (!label.trim() || label.length > 64 || /[\r\n\u0000-\u001f]/.test(label))
+      throw new TypeError("Invalid caption label.");
+    this.InsertTableOfContents(
+      {
+        ...options,
+        CaptionLabel: label,
+        Title: options.Title ?? `Table of ${label}s`,
+      },
+      context,
+    );
+  }
   UpdateFields(context: FieldContext = {}): FieldUpdateResult {
     const root = this.Engine.Document.ToJSON(),
       result = updateDocumentFields(root, context);
-    if (result.Updated)
-      this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
-        MapAnnotations: false,
-        TextChanges: result.TextChanges,
+    if (result.Updated) {
+      const start = this.Engine.Selection.Start.Offset,
+        end = this.Engine.Selection.End.Offset;
+      const move = (offset: number, trailing: boolean) => {
+        let delta = 0;
+        for (const change of result.TextChanges) {
+          if (offset < change.Start) break;
+          const finish = change.Start + change.RemovedLength;
+          if (offset >= finish)
+            delta += change.InsertedLength - change.RemovedLength;
+          else
+            return (
+              change.Start + delta + (trailing ? change.InsertedLength : 0)
+            );
+        }
+        return offset + delta;
+      };
+      this.Engine.Change(() => {
+        this.Engine.ReplaceDocument(FlowDocument.FromJSON(root), {
+          MapAnnotations: false,
+          TextChanges: result.TextChanges,
+        });
+        this.Engine.Select(move(start, start === end), move(end, true));
       });
+    }
     return result;
   }
   SetStory(kind: StoryKind, blocks: DocumentNode[], sectionId?: string): void {
@@ -501,6 +1026,12 @@ export class DocumentFeatures {
       MaxLevel: options.MaxLevel ?? 3,
       Title: options.Title ?? "Contents",
       IncludePageNumbers: options.IncludePageNumbers ?? true,
+      ...(options.CaptionLabel
+        ? {
+            CaptionLabel: options.CaptionLabel,
+            Instruction: `TOC \\c ${JSON.stringify(options.CaptionLabel)} \\h`,
+          }
+        : {}),
     });
     const token = section.Id;
     section.SetValue("TocInstance", token);
@@ -568,8 +1099,9 @@ export class DocumentFeatures {
       const level = Number(node.props.HeadingLevel);
       if (
         node.type === "Paragraph" &&
-        level >= 1 &&
-        level <= options.MaxLevel
+        (options.CaptionLabel
+          ? node.props.Caption?.Label === options.CaptionLabel
+          : level >= 1 && level <= options.MaxLevel)
       ) {
         const page = options.IncludePageNumbers
           ? context.PageOfNode?.(node.id)
@@ -579,7 +1111,7 @@ export class DocumentFeatures {
         );
         p.SetValue("TocTargetId", node.id);
         p.SetValue("Margin", {
-          Left: (level - 1) * 18,
+          Left: options.CaptionLabel ? 0 : (level - 1) * 18,
           Top: 4,
           Bottom: 4,
           Right: 0,
