@@ -1,0 +1,23 @@
+name: Word audit workspace
+on:
+  push:
+    branches: [feat/word-authoring-audit]
+    paths: [.github/workflows/word-audit-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: tar -czf word-audit-node-modules.tar.gz node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: word-audit-node-modules
+          path: word-audit-node-modules.tar.gz
+          retention-days: 1
