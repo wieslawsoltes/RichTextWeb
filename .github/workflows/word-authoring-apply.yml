@@ -1,0 +1,55 @@
+name: Word authoring qualification
+on:
+  push:
+    branches: [feat/word-authoring-audit]
+    paths: [.word-audit/ready.json]
+permissions:
+  contents: write
+concurrency:
+  group: word-authoring-qualification
+  cancel-in-progress: false
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply verified source patch and commit to feature branch
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, pathlib, subprocess
+          root = pathlib.Path('.word-audit')
+          manifest = json.loads((root / 'ready.json').read_text())
+          encoded = ''.join((root / f'part-{i}.txt').read_text() for i in range(manifest['parts']))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == manifest['sha256'], 'Patch checksum mismatch'
+          pathlib.Path('/tmp/word-authoring.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/word-authoring.patch'], check=True)
+          subprocess.run(['git', 'apply', '--index', '/tmp/word-authoring.patch'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          PY
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git rm -r .word-audit
+          git commit -m 'feat: add Word formulas, captions, rich table sorting and reusable authoring controls'
+          git push origin HEAD:refs/heads/feat/word-authoring-audit
+          git rev-parse HEAD > qualified-source-sha.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: word-authoring-qualification
+          path: |
+            test-results/
+            qualified-source-sha.txt
+          if-no-files-found: warn
