@@ -1,0 +1,24 @@
+name: Word browser diagnostics
+on:
+  push:
+    branches: [feat/word-authoring-audit]
+    paths: [.github/workflows/word-browser-diagnostic.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Capture failed browser step
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/wieslawsoltes/RichTextWeb/actions/jobs/105968966376/logs > job.log
+          tail -n 140 job.log > browser-failure.log
+          cat browser-failure.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: word-browser-diagnostics
+          path: browser-failure.log
+          retention-days: 1
