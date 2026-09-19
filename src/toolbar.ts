@@ -1114,7 +1114,9 @@ export class RichTextToolbar extends HTMLElementBase {
             mutate(() =>
               engine.Change(() => {
                 features.InsertField(data.type as FieldType, data.argument);
-                features.UpdateFields(editor.GetFieldContext());
+                // Insertion is not a request to recalculate existing page fields.
+                // A batched change can still expose the previous layout revision.
+                features.UpdateFields();
               }),
             ),
         );
