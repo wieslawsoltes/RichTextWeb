@@ -5,6 +5,9 @@ on:
     paths: [.word-audit/ready.json]
 permissions:
   contents: write
+defaults:
+  run:
+    shell: bash
 concurrency:
   group: word-authoring-qualification
   cancel-in-progress: false
@@ -16,15 +19,50 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Apply verified source patch and commit to feature branch
+      - name: Apply checksum-verified source patch
         run: |
-          python3 - <<'PY'
+          mkdir -p qualification
+          python3 - <<'PY' | tee qualification/patch.log
           import base64, gzip, hashlib, json, pathlib, subprocess
           root = pathlib.Path('.word-audit')
           manifest = json.loads((root / 'ready.json').read_text())
-          encoded = ''.join((root / f'part-{i}.txt').read_text() for i in range(manifest['parts']))
-          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          assert hashlib.sha256(patch).hexdigest() == manifest['sha256'], 'Patch checksum mismatch'
+          files = sorted(root.glob('part-*.txt'))
+          assert len(files) == manifest['parts'], 'Missing patch parts'
+          alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+          parts, bad = [], []
+          for index, file in enumerate(files):
+              assert int(file.name.split('-')[1]) == index
+              text = file.read_text()
+              expected = file.stem.rsplit('-', 1)[1]
+              def matches(value):
+                  return hashlib.sha256(value.encode()).hexdigest()[:16] == expected
+              if not matches(text):
+                  # Only transport correction; complete patch SHA-256 is mandatory.
+                  recovered = None
+                  for i in range(len(text) + 1):
+                      if matches(text[:i] + text[i+1:]):
+                          recovered = text[:i] + text[i+1:]
+                          break
+                      for char in alphabet:
+                          for candidate in (text[:i] + char + text[i:], text[:i] + char + text[i+1:]):
+                              if matches(candidate):
+                                  recovered = candidate
+                                  break
+                          if recovered is not None:
+                              break
+                      if recovered is not None:
+                          break
+                  if recovered is None:
+                      bad.append(file.name)
+                  else:
+                      print('Recovered transport part', file.name, flush=True)
+                      text = recovered
+              parts.append(text)
+          print('Invalid transport parts:', bad, flush=True)
+          assert not bad, 'Patch transport validation failed; no source applied'
+          patch = gzip.decompress(base64.b64decode(''.join(parts), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == manifest['sha256'], 'Full patch checksum mismatch'
+          print('Verified full source patch SHA-256:', manifest['sha256'], flush=True)
           pathlib.Path('/tmp/word-authoring.patch').write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', '/tmp/word-authoring.patch'], check=True)
           subprocess.run(['git', 'apply', '--index', '/tmp/word-authoring.patch'], check=True)
@@ -35,21 +73,21 @@ jobs:
           git rm -r .word-audit
           git commit -m 'feat: add Word formulas, captions, rich table sorting and reusable authoring controls'
           git push origin HEAD:refs/heads/feat/word-authoring-audit
-          git rev-parse HEAD > qualified-source-sha.txt
+          git rev-parse HEAD > qualification/source-sha.txt
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run check
+      - run: npm ci 2>&1 | tee qualification/install.log
+      - run: npm run typecheck 2>&1 | tee qualification/typecheck.log
+      - run: npm run check 2>&1 | tee qualification/check.log
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      - run: npm run test:browser 2>&1 | tee qualification/browser.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: word-authoring-qualification
           path: |
             test-results/
-            qualified-source-sha.txt
+            qualification/
           if-no-files-found: warn
