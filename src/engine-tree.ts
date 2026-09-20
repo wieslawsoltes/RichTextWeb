@@ -456,4 +456,21 @@ export function mapMetadata(
           ? item.Start
           : Math.max(item.Start, move(item.End, true));
     }
+  // Auto-caption targets belong to their paragraph. A following paragraph break
+  // must not grow the whole-caption bookmark into subsequent text/references.
+  if (Array.isArray(items)) {
+    const captions = new Map<string, TextBlock>();
+    for (const block of textBlocks(root)) {
+      const caption = block.node.props.Caption;
+      if (caption?.Id !== block.node.id) continue;
+      for (const key of ["Bookmark", "NumberBookmark", "LabelNumberBookmark"])
+        if (typeof caption[key] === "string") captions.set(caption[key], block);
+    }
+    for (const item of items) {
+      const caption = item.Kind === "Bookmark" && captions.get(item.Data?.Name);
+      if (!caption) continue;
+      item.Start = Math.max(caption.start, Math.min(item.Start, caption.end));
+      item.End = Math.max(item.Start, Math.min(item.End, caption.end));
+    }
+  }
 }

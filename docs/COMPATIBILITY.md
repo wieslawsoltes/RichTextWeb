@@ -30,3 +30,9 @@ Keep FlowDocument at application boundaries. Convert explicitly between UTF-16 o
 Use browser printing when visible measured-sheet geometry matters. Direct `toPDF` uses independent headless layout. Use canonical JSON for exact RichTextWeb state; other formats preserve their supported subsets. Test representative document/font fixtures before depending on interchange fidelity.
 
 See [rich page-authoring APIs](PAGE-AUTHORING.md), [authoring and equations](AUTHORING.md), [verification](VERIFICATION.md), [property semantics](WPF-PROPERTY-SYSTEM.md), [review/history](ENGINE.md), [collaboration](COLLABORATION.md), [formats](FORMATS.md), [PDF](PDF.md) and [integration](INTEGRATION.md).
+
+## Word authoring continuation (source, unreleased)
+
+The [feature audit](WORD-FEATURE-AUDIT.md) inventories the 42 source modules and remaining acceptance gates. Table formulas, rich sorting, header authoring, captions/references/indexes, expanded fields, DOCX properties, field management and statistics are implemented in their documented subsets. The [authoring contract](WORD-AUTHORING.md) distinguishes interchange, editing and qualified behavior.
+
+`ReferenceMode: "Current"` supports explicit dependency-aware REF/bookmark-formula updates, retaining locked or unresolved caches and original-coordinate history. Toolbar Update fields and F9 select this mode; headless updates default to legacy snapshot reads. This does not implement every reference switch, partial-result bookmark interpretation, nested instruction fields, automatic TOC regeneration or a layout/field fixed-point scheduler. Auto-generated caption targets remain confined to their owning paragraph during ordinary typing/paragraph insertion. Native imported/manual bookmarks without that ownership metadata retain existing mapping semantics.

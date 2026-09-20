@@ -81,7 +81,9 @@ features.InsertTableOfFigures("Figure", {
 
 `InsertCrossReference` accepts `PageNumber: true` to insert `PAGEREF` rather than `REF`. Page results need caller-supplied/current measured layout. `InsertTableOfFigures` uses the selected label and existing TOC machinery; it can produce a list of tables with label `Table`. Native DOCX uses caption styles, `SEQ`, bookmarks, reference fields and `TOC \c` instructions, not just private JSON.
 
-Updates resolve bookmark references from a pre-update snapshot. When the referenced sequence itself changes, a second update may be necessary. Automatic chapter numbering, arbitrary index/authority fields and a general fixed-point field scheduler remain outside this increment.
+Headless updates retain snapshot semantics by default. Pass `ReferenceMode: "Current"` to resolve supported `REF` chains and bookmarked formula operands against pending field results in one update. This includes references to a newly recalculated caption sequence. The toolbar's Update fields command and the editor's F9 path use this mode. Auto-generated caption bookmark ranges stay inside their owning paragraph when typing a following paragraph.
+
+Automatic chapter numbering, arbitrary index/authority fields, rebuilding caption indexes during field updates, and a general layout/field fixed-point scheduler remain outside this increment.
 
 ## Inspect, edit, update, lock and unlink fields
 
@@ -111,13 +113,13 @@ features.InsertFieldCode("DOCVARIABLE Budget");
 features.UpdateFields({ Now: new Date("2026-09-19T12:00:00Z") });
 ```
 
-Scalar custom properties are retained in `DocumentProperties`; document variables use `DocumentVariables`. Native DOCX exports/imports core properties, typed scalar custom properties and document variables. Native Word variables are strings; objects and arbitrary custom XML bindings are not supported. Tests remove the private RichTextWeb extension when checking native interchange.
+Scalar custom properties are retained in `CustomProperties`; document variables use `DocumentVariables`. Native DOCX exports/imports core properties, typed scalar custom properties and document variables. Native Word variables are strings; objects and arbitrary custom XML bindings are not supported. Tests remove the private RichTextWeb extension when checking native interchange.
 
 ## Reusable controls and sample
 
 Register the controls and toolbar normally, attach the same editor to `RichTextToolbar.Editor`, and use `toolbar.Execute(command)` or visible buttons. The new shared commands are `Formula`, `SortTable`, `RepeatHeaderRows`, `Caption`, `CrossReference`, `TableOfFigures`, `FieldCode`, `LockField`, `UnlockField`, `UnlinkField` and `WordCount`. Dialog submissions reject a changed document or newly read-only editor. No sample-only engine is required.
 
-`editor.UpdateFields(context?)` is read-only guarded and combines caller context with available measured page context. `F9` updates document fields; `Ctrl+F11` locks, `Ctrl+Shift+F11` unlocks, and `Ctrl+Shift+F9` unlinks the selected field. The Insert Field dialog preserves existing page-field caches. Explicit field updates may use current measured pagination. Shortcuts are ignored during composition and mutation is blocked in read-only mode.
+`editor.UpdateFields(context?)` is read-only guarded, defaults to `ReferenceMode: "Current"`, and combines caller context with available measured page context. `F9` updates document fields; `Ctrl+F11` locks, `Ctrl+Shift+F11` unlocks, and `Ctrl+Shift+F9` unlinks the selected field. The Insert Field dialog preserves existing page-field caches. Explicit field updates may use current measured pagination. Shortcuts are ignored during composition and mutation is blocked in read-only mode.
 
 Document Studio exposes these actions in References, Table layout and Review. The `automation` template demonstrates calculated line items (150.00 and 270.00), total 420.00, budget approval, custom properties, a table caption, cross-reference and list of tables. Run `npm ci`, `npm run build:demo` and `npm run dev`, then select the automation template.
 
@@ -135,3 +137,21 @@ const includingNotes = features.GetStatistics({
 Results contain `Words`, `Characters`, `CharactersWithoutSpaces`, `Paragraphs` and `Lines`. Words use Unicode segmentation; characters are code points excluding paragraph separators and embedded objects; lines are logical rather than printed. Selection offsets remain UTF-16, as in the engine. Notes are opt-in for document totals. Headers/floating stories are not automatically counted. These are not certified Word proofing-engine counts.
 
 `node scripts/audit-word-features.mjs > feature-inventory.json` inventories top-level source exports, declared public class members and test paths without adding a runtime dependency. It supports the installed TypeScript compiler API (including its version-7 native API) and does not count declarations as behavioral coverage.
+
+## Dependency-aware reference updates
+
+```js
+const result = features.UpdateFields({
+  ReferenceMode: "Current",
+  Variables: { Budget: 750 },
+});
+console.log(result.Updated, result.Unresolved);
+```
+
+The dependency resolver evaluates pending values before committing any display replacement. `REF` supports whole-field bookmark ranges, multiple fields with surrounding text and paragraph separators, and explicit field/node targets. A whole cached-result node resolves through its owning field; partial or nested cached-result nodes are diagnosed. Numeric bookmark operands in formulas share the resolver. Forward dependencies work regardless of document order. All successful replacements use original UTF-16 coordinates, with one engine undo action and correct selection/annotation remapping.
+
+Locked dependencies supply their retained cache. Missing/circular/depth-limited dependencies preserve affected caches and return diagnostics; independent resolvable fields still update. A bookmark covering only part of a field cache is diagnosed, not guessed. Empty caches at a bookmark's boundaries are outside that bookmark, matching annotation affinity. Main-story floating objects remain single offset atoms; explicit independent-story node targets do not create main-story text edits. Evaluation caches are keyed by object identity, so independent stories can reuse detached node IDs; ambiguous explicit node-ID references are diagnosed rather than choosing a story.
+
+Reference expansion is bounded to 64 field dependency levels, 100,000 reader steps, one million UTF-16 units per assembled reference and an eight-million-unit cumulative reader budget. These are defensive limits, not Word compatibility limits. No external fields execute and no data is fetched. The existing headless `Snapshot` behavior is preserved unless `Current` is requested; controls accept an explicit `ReferenceMode: "Snapshot"` override.
+
+This is an explicit-update dependency evaluator, not a persistent incremental graph. Nested instruction fields, every Word reference switch, ambiguous partial-result targets, implicit table-of-contents rebuilding, and pagination/TOC fixed points remain separate work. Update contents/indexes with `UpdateTableOfContents`; page fields require valid measured page context. The automation sample now includes a linked total: changing a table input and pressing F9 updates both its formula total and the reference in the same pass.

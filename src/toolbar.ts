@@ -1269,7 +1269,10 @@ export class RichTextToolbar extends HTMLElementBase {
         break;
       case "UpdateFields":
         mutate(() => {
-          const result = features.UpdateFields(editor.GetFieldContext());
+          const result = features.UpdateFields({
+            ReferenceMode: "Current",
+            ...editor.GetFieldContext(),
+          });
           this.status = `${result.Updated} fields updated${result.Unresolved.length ? `; ${result.Unresolved.length} unresolved: ${result.Unresolved[0].Reason}` : ""}`;
         });
         break;

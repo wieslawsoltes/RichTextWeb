@@ -23,6 +23,8 @@ The core engine and reusable controls now include bounded table formulas with 18
 
 Document Studio exposes the shared commands through References, Table layout and Review. Its **automation** template contains a calculated estimate, budget approval, caption, reference and list of tables. The additions remain in source until a subsequent package release; the version remains 0.5.0.
 
+The continuation fixes field-update selection boundaries and caption bookmark containment. Update fields/F9 now resolves supported forward cross-references and bookmarked formula dependencies in one pass, with cycle/expansion diagnostics and locked-cache handling. Headless callers opt in with `features.UpdateFields({ ReferenceMode: "Current" })`; the existing snapshot mode remains available. The automation sample includes a formula-linked total.
+
 [Authoring API examples and supported limits](docs/WORD-AUTHORING.md) · [Full engine/control feature audit and prioritized remaining work](docs/WORD-FEATURE-AUDIT.md). The audit distinguishes implemented behavior from preservation and unqualified fidelity, rather than claiming complete Word parity. Reproduce its declaration inventory with `node scripts/audit-word-features.mjs > feature-inventory.json`.
 
 ## Rich page authoring — 0.5.0
