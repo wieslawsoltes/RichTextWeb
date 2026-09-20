@@ -17,6 +17,14 @@ npm install @wieslawsoltes/richtextweb
 
 The [complete original guide](README.web.md) preserves JavaScript/React/MVVM usage, desktop adapters, architecture, tests, compatibility matrices and licensing. [Open the web demo](https://wieslawsoltes.github.io/RichTextWeb/).
 
+## Recipient queries and mail merge — source, unreleased
+
+The shared engine now supports local scalar recipient validation, CSV/TSV/JSON import, typed filters, stable three-key sorting, original-row selection, record ranges and snapshot-based rich previews. Native `MERGEREC`/`MERGESEQ` and conditional `MERGEFIELD` prefix/suffix text work with the existing field/dependency engine. Generation returns independent documents without editing the template; strict mode rejects unresolved fields before emitting results.
+
+Document Studio's **Personalised project invitations** template and Mailings → **Recipients & preview** exercise the shared APIs. A results picker supports selected DOCX download, a canonical JSON batch and explicit document opening. Recipient lists are not stored in the template or sent to a service. The older quick JSON merge command remains available.
+
+[Mail-merge API, privacy, limits and examples](docs/MAIL-MERGE.md) · [Full capability audit](docs/WORD-FEATURE-AUDIT.md). This does not add email delivery, external Office data connectors, labels/envelopes, directory merge or Word-identical pagination. Package versions remain unchanged.
+
 ## Fillable content controls — source, unreleased
 
 RichTextWeb now has inline and block **rich text, plain text, checkbox, dropdown, combo and date content controls**. The standalone engine owns typed values, tags, placeholders, independent editing/deletion locks, atomic form filling and undo. Native DOCX SDTs preserve supported controls without depending on private RichTextWeb metadata. Unsupported native control properties produce explicit import diagnostics.

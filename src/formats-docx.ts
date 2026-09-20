@@ -753,6 +753,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
         "DATE",
         "REF",
         "MERGEFIELD",
+        "MERGEREC",
+        "MERGESEQ",
         "TOC",
         "TIME",
         "SAVEDATE",

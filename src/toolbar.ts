@@ -1,3 +1,4 @@
+import { openMailMergeRecipients } from "./mail-merge-ui.js";
 import { executeDocumentThemeCommand } from "./document-theme-ui.js";
 import { executeDocumentStyleCommand } from "./document-style-ui.js";
 import { executeContentControlCommand } from "./content-control-ui.js";
@@ -110,6 +111,7 @@ const layout: Tool[] = [
   { label: "Update fields", command: "UpdateFields" },
   { label: "Update contents", command: "UpdateTableOfContents" },
   { label: "Mail merge", command: "MailMerge" },
+  { label: "Recipients and preview", command: "MailMergeRecipients" },
   { label: "Page preview", command: "PagePreview" },
 ];
 const review: Tool[] = [
@@ -1168,6 +1170,8 @@ export class RichTextToolbar extends HTMLElementBase {
                 "DATE",
                 "TIME",
                 "MERGEFIELD",
+                "MERGEREC",
+                "MERGESEQ",
                 "REF",
                 "PAGEREF",
                 "SEQ",
@@ -1360,6 +1364,27 @@ export class RichTextToolbar extends HTMLElementBase {
         break;
       case "UpdateTableOfContents":
         mutate(() => features.UpdateTableOfContents(editor.GetFieldContext()));
+        break;
+      case "MailMergeRecipients":
+        openMailMergeRecipients(
+          {
+            Editor: editor,
+            IsCurrent: () => this.editor === editor,
+            CreateDialog: () => this.createDialog(),
+            Generated: (documents) => {
+              this.dispatchEvent(
+                new CustomEvent("documentsgenerated", {
+                  detail: { documents },
+                  bubbles: true,
+                  composed: true,
+                }),
+              );
+              this.status = `${documents.length} merged documents generated`;
+              this.Refresh();
+            },
+          },
+          parameter,
+        );
         break;
       case "MailMerge":
         this.prompt(

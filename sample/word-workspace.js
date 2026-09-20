@@ -1,3 +1,4 @@
+import { showMailMergeResults } from "./mail-merge.js";
 function fieldReference(instruction) {
   const match = /^(?:REF|PAGEREF)\s+(?:"([^"]+)"|(\S+))/i.exec(instruction);
   return match?.[1] ?? match?.[2];
@@ -152,18 +153,7 @@ export function createWordWorkspace(hooks) {
   commandService.shadowRoot.append(hideTools);
   commandService.addEventListener("previewrequest", hooks.openPagePreview);
   commandService.addEventListener("documentsgenerated", (event) => {
-    for (const [index, document] of event.detail.documents.entries()) {
-      const link = window.document.createElement("a");
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(document.ToJSON(), null, 2)], {
-          type: "application/json",
-        }),
-      );
-      link.href = url;
-      link.download = `merged-${index + 1}.json`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
+    showMailMergeResults(event.detail.documents, editor, RT);
   });
   commandService.addEventListener("commanderror", (event) =>
     toast(event.detail.error.message),

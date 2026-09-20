@@ -7,8 +7,8 @@ interface Location {
   cell: DocumentNode;
 }
 export class TableFormulaEvaluator {
-  private locations = new Map<string, Location>();
-  private grids = new Map<string, TableGrid>();
+  private locations = new WeakMap<DocumentNode, Location>();
+  private grids = new WeakMap<DocumentNode, TableGrid>();
   constructor(
     roots: DocumentNode[],
     private readField: (node: DocumentNode) => string | number | undefined,
@@ -24,17 +24,17 @@ export class TableFormulaEvaluator {
         cell = undefined;
       }
       if (node.type === "TableCell") cell = node;
-      if (table && cell) this.locations.set(node.id, { table, cell });
+      if (table && cell) this.locations.set(node, { table, cell });
       for (const child of node.children ?? []) visit(child, table, cell);
     };
     for (const root of roots) visit(root);
   }
   Evaluate(field: DocumentNode, expression: string): number {
-    const location = this.locations.get(field.id);
+    const location = this.locations.get(field);
     const grid = location
-      ? (this.grids.get(location.table.id) ?? buildTableGrid(location.table))
+      ? (this.grids.get(location.table) ?? buildTableGrid(location.table))
       : undefined;
-    if (location && grid) this.grids.set(location.table.id, grid);
+    if (location && grid) this.grids.set(location.table, grid);
     const origin = location && grid?.origins.get(location.cell.id);
     const cellText = (node: DocumentNode): string => {
       if (node.props.Field) {
