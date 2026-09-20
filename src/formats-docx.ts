@@ -1731,7 +1731,14 @@ export async function fromDOCX(
       hanging = Number(indent?.attrs["w:hanging"]);
     if (Number.isFinite(hanging)) p.TextIndent = -hanging / 15;
     else if (Number.isFinite(firstLine)) p.TextIndent = firstLine / 15;
-    if (spacing || indent)
+    // A line-height-only spacing element or first-line-only indentation must
+    // not synthesize a local Margin and shadow the paragraph style's margins.
+    if (
+      spacing?.attrs["w:before"] !== undefined ||
+      spacing?.attrs["w:after"] !== undefined ||
+      indent?.attrs["w:left"] !== undefined ||
+      indent?.attrs["w:right"] !== undefined
+    )
       p.Margin = {
         Top: Number(spacing?.attrs["w:before"] || 0) / 15,
         Bottom: Number(spacing?.attrs["w:after"] || 0) / 15,

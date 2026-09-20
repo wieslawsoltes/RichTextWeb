@@ -99,7 +99,7 @@ Remaining work includes table/list styles, linked-style intent, document themes 
 
 ## Evidence
 
-This increment adds 54 Node regressions to the 576-test forms baseline (630 total), plus eight integrated Chromium groups. It covers live model precedence, explicit overrides, typing, following styles, selections, undo/review, safe deletion, native style XML without extensions, style-only external edits, unsupported imports, story drafts, sequential collaboration and the public-API sample. Browser/package/native-host results belong to the exact checked commit, not test presence.
+This increment adds 56 Node regressions to the 576-test forms baseline (632 total), plus eight integrated Chromium groups. It covers live model precedence, explicit overrides, typing, following styles, selections, undo/review, safe deletion, native style XML without extensions, style-only external edits, unsupported imports, story drafts, sequential collaboration and the public-API sample. Browser/package/native-host results belong to the exact checked commit, not test presence.
 
 ```sh
 npm run typecheck
