@@ -1,0 +1,34 @@
+name: Prepare Word field-boundary fix
+on:
+  push:
+    branches: [feat/word-authoring-audit]
+    paths: [.github/workflows/word-caret-source.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d49756c55cfa49cb41cc43ce60dd8cd529f2403
+      - name: Apply exact source correction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p = Path('src/document-features.ts')
+          s = p.read_text()
+          old = '          const finish = change.Start + change.RemovedLength;\n          if (offset >= finish)'
+          new = '          const finish = change.Start + change.RemovedLength;\n          // Leading boundaries stay before nonempty fields, including range ends.\n          // Only carets strictly inside a replaced result follow its trailing edge.\n          if (offset === change.Start && change.RemovedLength > 0)\n            return change.Start + delta;\n          if (offset >= finish)'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          actual = subprocess.check_output(['git', 'hash-object', str(p)], text=True).strip()
+          assert actual == '22b4bedfac7720fcfd4380cb6829aa3c17e9d325', actual
+          PY
+          git diff --check
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git add src/document-features.ts
+          git commit -m 'fix: retain leading selection boundaries when updating fields'
+          git push origin HEAD:refs/heads/feat/word-caret-source
