@@ -83,6 +83,20 @@ const read = (row: MailMergeRecord, field: string) =>
 const positive = (value: unknown): value is number =>
   Number.isSafeInteger(value) && Number(value) > 0;
 
+/** Copy array data without invoking input iterators or overridden array methods. */
+function queryArray<T>(value: unknown, limit: number, label: string): T[] {
+  if (!Array.isArray(value) || value.length > limit)
+    throw new RangeError(
+      `${label} requires an array of at most ${limit} entries.`,
+    );
+  return Array.from({ length: value.length }, (_, index) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !Object.hasOwn(descriptor, "value"))
+      throw new TypeError(`${label} arrays must contain own data entries.`);
+    return descriptor.value as T;
+  });
+}
+
 /** Validate and detach scalar records. Accessors, objects and executable values are rejected. */
 export function validateMailMergeRecords(input: unknown): MailMergeRecord[] {
   if (!Array.isArray(input) || input.length > mailMergeLimits.Records)
@@ -282,7 +296,7 @@ export function createMailMergePlan(
     "LastRecord",
     "FailOnUnresolved",
   ]);
-  for (const key of Object.keys(options)) {
+  for (const key of Object.getOwnPropertyNames(options)) {
     if (!Object.hasOwn(Object.getOwnPropertyDescriptor(options, key)!, "value"))
       throw new TypeError("Query accessors are not supported.");
     if (!validKeys.has(key))
@@ -298,16 +312,15 @@ export function createMailMergePlan(
     throw new TypeError("Locale must be nonempty.");
   if (options.Match !== undefined && !["All", "Any"].includes(options.Match))
     throw new TypeError("Match must be All or Any.");
-  const filters = options.Filters ?? [],
-    sorts = options.Sort ?? [];
-  if (
-    !Array.isArray(filters) ||
-    filters.length > mailMergeLimits.Filters ||
-    !Array.isArray(sorts) ||
-    sorts.length > mailMergeLimits.SortKeys
-  )
-    throw new RangeError(
-      "Mail merge supports at most 32 filters and three sort keys.",
+  const filters = queryArray<MailMergeCondition>(
+      options.Filters ?? [],
+      mailMergeLimits.Filters,
+      "Filter query",
+    ),
+    sorts = queryArray<MailMergeSort>(
+      options.Sort ?? [],
+      mailMergeLimits.SortKeys,
+      "Sort query",
     );
   const fields = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   const collator = new Intl.Collator(options.Locale ?? "en", {
@@ -323,19 +336,13 @@ export function createMailMergePlan(
       : typeof a === "number" && typeof b === "number"
         ? Math.sign(a - b)
         : collator.compare(String(a), String(b));
-  for (const values of [filters, sorts])
-    for (let i = 0; i < values.length; i++) {
-      const descriptor = Object.getOwnPropertyDescriptor(values, String(i));
-      if (!descriptor || !Object.hasOwn(descriptor, "value"))
-        throw new TypeError("Query arrays must contain own data entries.");
-    }
   const validateKey = (
     key: MailMergeSort | MailMergeCondition,
     names: string[],
   ) => {
     if (!record(key as unknown))
       throw new TypeError("Query keys must be plain objects.");
-    for (const name of Object.keys(key)) {
+    for (const name of Object.getOwnPropertyNames(key)) {
       if (!Object.hasOwn(Object.getOwnPropertyDescriptor(key, name)!, "value"))
         throw new TypeError("Query accessors are not supported.");
       if (!names.includes(name))
@@ -416,17 +423,18 @@ export function createMailMergePlan(
   }
   const selection = (numbers: number[] | undefined) => {
     if (numbers === undefined) return undefined;
-    if (
-      !Array.isArray(numbers) ||
-      numbers.length > rows.length ||
-      Array.from(numbers).some((n) => !positive(n) || n > rows.length)
-    )
+    const values = queryArray<number>(
+      numbers,
+      rows.length,
+      "Recipient selection",
+    );
+    if (values.some((n) => !positive(n) || n > rows.length))
       throw new RangeError(
         "Recipient selection requires valid one-based source row numbers.",
       );
-    if (new Set(numbers).size !== numbers.length)
+    if (new Set(values).size !== values.length)
       throw new RangeError("Duplicate recipient selection number.");
-    return new Set(numbers);
+    return new Set(values);
   };
   const include = selection(options.Include),
     exclude = selection(options.Exclude);
