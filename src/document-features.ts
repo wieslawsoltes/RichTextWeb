@@ -7,6 +7,7 @@ import {
   type ParsedFieldCode,
 } from "./field-code.js";
 import { validateFormula } from "./formula.js";
+import { FieldReferenceReader } from "./field-references.js";
 import { TableFormulaEvaluator } from "./table-formulas.js";
 import {
   getDocumentStatistics,
@@ -55,6 +56,8 @@ export interface FieldDefinition {
   Format?: string;
 }
 export interface FieldContext {
+  /** Snapshot preserves legacy caches; Current resolves REF/formula bookmark dependencies in this update. */
+  ReferenceMode?: "Snapshot" | "Current";
   PageNumber?: number;
   PageCount?: number;
   Now?: Date;
@@ -263,12 +266,19 @@ export function createFieldFromInstruction(
 }
 
 /** Resolve fields on a detached canonical tree. Failed/locked fields keep their cached text.
- * REF reads one pre-update snapshot. Formulas use memoized, current numeric field dependencies.
+ * ReferenceMode selects legacy snapshot reads or dependency-aware pending results.
+ * All replacement coordinates refer to the original snapshot.
  */
 export function updateDocumentFields(
   root: DocumentNode,
   context: FieldContext = {},
 ): FieldUpdateResult {
+  if (
+    context.ReferenceMode !== undefined &&
+    context.ReferenceMode !== "Snapshot" &&
+    context.ReferenceMode !== "Current"
+  )
+    throw new TypeError("ReferenceMode must be Snapshot or Current.");
   const result: FieldUpdateResult = {
     Updated: 0,
     Unresolved: [],
@@ -276,7 +286,8 @@ export function updateDocumentFields(
   };
   const roots = storyRoots(root),
     byId = new Map<string, DocumentNode>();
-  const sourceTextById = new Map<string, string>();
+  const sourceTextById = new WeakMap<DocumentNode, string>();
+  const ambiguousIds = new Set<string>();
   const sourceRanges = new WeakMap<
     DocumentNode,
     { Start: number; End: number }
@@ -288,6 +299,8 @@ export function updateDocumentFields(
   const originalAnnotations = copy(root.props.Annotations ?? []);
   // Only outer fields own main-story replacement ranges. Nested result fields are not edited twice.
   const visit = (node: DocumentNode, insideField = false) => {
+    if (byId.has(node.id) && byId.get(node.id) !== node)
+      ambiguousIds.add(node.id);
     byId.set(node.id, node);
     if (node.props.Field && !insideField) fields.push(node);
     for (const child of node.children ?? [])
@@ -316,13 +329,13 @@ export function updateDocumentFields(
     };
     index(block.node);
   }
-  const codes = new Map<string, ParsedFieldCode>(),
-    failures = new Map<string, string>();
+  const codes = new Map<DocumentNode, ParsedFieldCode>(),
+    failures = new Map<DocumentNode, string>();
   const sequences = new Map<string, number>(),
-    sequenceValues = new Map<string, number>();
-  const numericValues = new Map<string, number>(),
-    values = new Map<string, string | undefined>(),
-    resolving = new Set<string>();
+    sequenceValues = new Map<DocumentNode, number>();
+  const numericValues = new Map<DocumentNode, number>(),
+    values = new Map<DocumentNode, string | undefined>(),
+    resolving = new Set<DocumentNode>();
   for (const node of fields) {
     try {
       if (!["Span", "Run"].includes(node.type))
@@ -336,7 +349,7 @@ export function updateDocumentFields(
         parsed.Arguments.push(String(field.Argument));
       if (!parsed.Switches["*"] && field.Format)
         parsed.Switches["*"] = [String(field.Format)];
-      codes.set(node.id, parsed);
+      codes.set(node, parsed);
       if (parsed.Type === "SEQ") {
         const name = (parsed.Arguments[0] ?? "").toLocaleLowerCase("en");
         if (!name) throw new SyntaxError("SEQ requires a sequence identifier.");
@@ -361,19 +374,18 @@ export function updateDocumentFields(
         )
           throw new RangeError("SEQ restart must be a nonnegative integer.");
         sequences.set(name, number);
-        sequenceValues.set(node.id, number);
+        sequenceValues.set(node, number);
       }
     } catch (error) {
       failures.set(
-        node.id,
+        node,
         error instanceof Error ? error.message : String(error),
       );
     }
   }
   const sourceText = (target: DocumentNode) => {
-    if (!sourceTextById.has(target.id))
-      sourceTextById.set(target.id, text(target));
-    return sourceTextById.get(target.id)!;
+    if (!sourceTextById.has(target)) sourceTextById.set(target, text(target));
+    return sourceTextById.get(target)!;
   };
   const bookmark = (name: string) =>
     originalAnnotations.find(
@@ -397,10 +409,20 @@ export function updateDocumentFields(
     own(context.Properties, name) ??
     own(root.props.CustomProperties, name) ??
     own(root.props, name);
+  const references =
+    context.ReferenceMode === "Current"
+      ? new FieldReferenceReader(originalText, fields, sourceRanges, (node) =>
+          resolve(node),
+        )
+      : undefined;
+  const bookmarkText = (mark: { Start: number; End: number }) =>
+    references
+      ? references.Bookmark(mark.Start, mark.End)
+      : originalText.slice(mark.Start, mark.End);
   const namedNumber = (name: string) => {
     const target = bookmark(name),
       value = target
-        ? originalText.slice(target.Start, target.End)
+        ? bookmarkText(target)
         : (variable(name) ?? own(context.Data, name));
     return value === undefined ? undefined : parseFieldNumber(String(value));
   };
@@ -410,27 +432,26 @@ export function updateDocumentFields(
       const display = resolve(node);
       if (display === undefined)
         throw new Error(`Unresolved formula dependency: ${node.id}`);
-      return numericValues.get(node.id) ?? display;
+      return numericValues.get(node) ?? display;
     },
     namedNumber,
   );
   const now = context.Now ?? new Date();
   let statistics: DocumentStatistics | undefined;
   const resolve = (node: DocumentNode): string | undefined => {
-    if (values.has(node.id)) return values.get(node.id);
+    if (values.has(node)) return values.get(node);
     if (node.props.Field?.Locked === true) {
       const cached = text(node);
-      values.set(node.id, cached);
+      values.set(node, cached);
       return cached;
     }
-    if (failures.has(node.id)) return undefined;
-    if (resolving.has(node.id))
-      throw new Error("Circular field formula dependency.");
+    if (failures.has(node)) return undefined;
+    if (resolving.has(node)) throw new Error("Circular field dependency.");
     if (resolving.size >= 64)
       throw new RangeError("Field dependency depth exceeds 64.");
-    resolving.add(node.id);
+    resolving.add(node);
     try {
-      const code = codes.get(node.id);
+      const code = codes.get(node);
       if (!code) throw new Error("Nested or unsupported field dependency.");
       const arg = code.Arguments[0] ?? "",
         general = code.Switches["*"] ?? [];
@@ -514,7 +535,7 @@ export function updateDocumentFields(
           value = own(context.Data, arg);
           break;
         case "SEQ":
-          value = sequenceValues.get(node.id);
+          value = sequenceValues.get(node);
           break;
         case "IF": {
           if (code.Arguments.length !== 5)
@@ -556,13 +577,19 @@ export function updateDocumentFields(
         }
         case "REF":
         case "PAGEREF": {
+          if (references && ambiguousIds.has(arg))
+            throw new Error(
+              "Ambiguous node reference across document stories.",
+            );
           const target = byId.get(arg),
             mark = bookmark(arg);
           if (code.Type === "REF")
             value = target
-              ? sourceText(target)
+              ? references
+                ? references.Node(target)
+                : sourceText(target)
               : mark
-                ? originalText.slice(mark.Start, mark.End)
+                ? bookmarkText(mark)
                 : undefined;
           else {
             let page = target ? context.PageOfNode?.(target.id) : undefined;
@@ -604,7 +631,7 @@ export function updateDocumentFields(
       if (number !== undefined) {
         if (!Number.isFinite(number))
           throw new RangeError("A field result is not finite.");
-        numericValues.set(node.id, number);
+        numericValues.set(node, number);
         display = code.Switches["#"]
           ? formatFieldNumber(
               number,
@@ -624,29 +651,29 @@ export function updateDocumentFields(
       }
       if (code.Type === "SEQ" && code.Switches.h) display = "";
       display = formatFieldText(display, general, context.Locale);
-      values.set(node.id, display);
+      values.set(node, display);
       return display;
     } catch (error) {
       failures.set(
-        node.id,
+        node,
         error instanceof Error ? error.message : String(error),
       );
-      values.set(node.id, undefined);
+      values.set(node, undefined);
       return undefined;
     } finally {
-      resolving.delete(node.id);
+      resolving.delete(node);
     }
   };
   // Evaluate before changing any cache, so dependency traversal cannot observe half-written fields.
   for (const node of fields) resolve(node);
   for (const node of fields) {
     if (node.props.Field.Locked === true) continue;
-    const value = values.get(node.id);
+    const value = values.get(node);
     if (value === undefined) {
       result.Unresolved.push({
         Id: node.id,
         Instruction: String(node.props.Field.Instruction ?? ""),
-        Reason: failures.get(node.id) ?? "Missing field data.",
+        Reason: failures.get(node) ?? "Missing field data.",
       });
     } else if (text(node) !== value) {
       const range = sourceRanges.get(node);

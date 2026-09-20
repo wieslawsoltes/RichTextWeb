@@ -710,6 +710,7 @@ export class RichTextBox extends HTMLElementBase {
   UpdateFields(context: FieldContext = {}): FieldUpdateResult | false {
     if (this.IsReadOnly) return false;
     const result = new DocumentFeatures(this.Engine).UpdateFields({
+      ReferenceMode: "Current",
       ...this.GetFieldContext(),
       ...context,
     });

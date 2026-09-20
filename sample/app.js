@@ -141,13 +141,13 @@ const templates = {
       "Live table formulas, captions, references, document properties and field controls.",
     build() {
       const d = RT.fromHTML(`<h1>Word authoring &amp; automation</h1>
-        <p>This example uses the standalone engine and reusable controls. Select a value and use Table layout → Formula or Sort. Press F9 to refresh fields.</p>
+        <p>This example uses the standalone engine and reusable controls. Select a value and use Table layout → Formula or Sort. Press F9 to refresh formulas and their linked references together.</p>
         <h2>Estimate</h2><table><tbody>
         <tr><td>Description</td><td>Quantity</td><td>Unit price</td><td>Amount</td></tr>
         <tr><td>Editing</td><td>2</td><td>75</td><td>CALC_EDIT</td></tr>
         <tr><td>Design</td><td>3</td><td>90</td><td>CALC_DESIGN</td></tr>
         <tr><td>Total</td><td></td><td></td><td>CALC_TOTAL</td></tr>
-        </tbody></table><p>Project: PROJECT_NAME. Approval: APPROVAL.</p>`);
+        </tbody></table><p>Project: PROJECT_NAME. Approval: APPROVAL.</p><p>Linked total: ESTIMATE_REF</p>`);
       d.SetValue("Title", "Word authoring & automation");
       d.SetValue("CustomProperties", {
         Project: "Document Studio",
@@ -158,6 +158,7 @@ const templates = {
       engine.Select(d.Text.indexOf("Description"));
       engine.SetTableHeaderRows(1);
       features.SetDocumentVariable("Budget", 500);
+      let totalFieldId;
       for (const [marker, code] of [
         ["CALC_EDIT", '= B2*C2 \\# "#,##0.00"'],
         ["CALC_DESIGN", '= PRODUCT(B3:C3) \\# "#,##0.00"'],
@@ -167,9 +168,19 @@ const templates = {
       ]) {
         const start = d.Text.indexOf(marker);
         engine.Select(start, start + marker.length);
-        features.InsertFieldCode(code);
+        const id = features.InsertFieldCode(code);
+        if (marker === "CALC_TOTAL") totalFieldId = id;
       }
-      features.UpdateFields();
+      const totalField = d.FindById(totalFieldId);
+      engine.Select(
+        totalField.ContentStart.Offset,
+        totalField.ContentEnd.Offset,
+      );
+      engine.AddBookmark("EstimateTotal");
+      const referenceStart = d.Text.indexOf("ESTIMATE_REF");
+      engine.Select(referenceStart, referenceStart + "ESTIMATE_REF".length);
+      features.InsertFieldCode("REF EstimateTotal");
+      features.UpdateFields({ ReferenceMode: "Current" });
       engine.Select(d.Text.length);
       const caption = features.InsertCaption({
         Label: "Table",

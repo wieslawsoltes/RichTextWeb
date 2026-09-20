@@ -42,6 +42,7 @@ export async function runWordAuthoringBrowserChecks(page) {
     await page.evaluate(() => richTextStudio.loadTemplate("automation"));
     assert.match(await text(), /420\.00/);
     assert.match(await text(), /Within budget/);
+    assert.match(await text(), /Linked total: 420\.00/);
     assert.match(await text(), /See Table 1 for the estimate/);
     assert.match(
       await text(),
@@ -195,6 +196,40 @@ export async function runWordAuthoringBrowserChecks(page) {
     assert.equal(await text(), "12");
     results.push(
       "Field-code validation, locks, F9 update and Ctrl+Shift+F9 unlink work through the control",
+    );
+
+    await page.evaluate(() => {
+      const { RT, editor } = richTextStudio;
+      const source = RT.createFieldFromInstruction("DOCVARIABLE Value", "old");
+      const reference = RT.createFieldFromInstruction(
+        `REF ${source.Id}`,
+        "stale",
+      );
+      editor.Document = new RT.FlowDocument(
+        new RT.Paragraph([reference, new RT.Run("|"), source]),
+      );
+      new RT.DocumentFeatures(editor.Engine).SetDocumentVariable(
+        "Value",
+        "first",
+      );
+      editor.Select(0);
+    });
+    await command("UpdateFields");
+    assert.equal(await text(), "first|first");
+    await page.evaluate(() => {
+      const { RT, editor } = richTextStudio;
+      new RT.DocumentFeatures(editor.Engine).SetDocumentVariable(
+        "Value",
+        "second",
+      );
+      editor.Focus();
+    });
+    await page.keyboard.press("F9");
+    assert.equal(await text(), "second|second");
+    await page.evaluate(() => richTextStudio.editor.Undo());
+    assert.equal(await text(), "first|first");
+    results.push(
+      "Toolbar and F9 update forward field references in one undoable pass",
     );
 
     await page.evaluate(() => {
