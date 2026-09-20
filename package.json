@@ -141,7 +141,7 @@
     }
   },
   "devDependencies": {
-    "@types/node": "26.5.1",
+    "@types/node": "26.6.1",
     "@types/react": "19.3.0",
     "@wieslawsoltes/dockyard": "0.1.0",
     "@wieslawsoltes/dynamicdataweb": "0.1.1",
@@ -152,7 +152,7 @@
     "@wieslawsoltes/treedatagridweb": "0.1.0",
     "esbuild": "0.28.2",
     "playwright": "1.63.0",
-    "prettier": "3.9.6",
+    "prettier": "3.9.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "rxjs": "7.8.2",
