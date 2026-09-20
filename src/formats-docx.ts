@@ -1,3 +1,9 @@
+import {
+  contentControlPropertiesXML,
+  readContentControlProperties,
+  readContentControlPlaceholders,
+} from "./content-control-docx.js";
+import { collectContentControlNodes } from "./content-controls.js";
 import { normalizeTableHeaderGroups } from "./table-grid.js";
 import { parseFieldCode } from "./field-code.js";
 import { pageSettings } from "./pagination.js";
@@ -321,6 +327,19 @@ function bytesBase64(value: Uint8Array): string {
 /** Produces a real OPC/WordprocessingML package with styled text, tables, lists and embedded images. */
 export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   const root = document.ToJSON();
+  const contentControls = collectContentControlNodes(root);
+  let contentControlId = 0;
+  const contentControlPlaceholders: { Id: number; Text: string }[] = [];
+  const controlXML = (node: DocumentNode) => {
+    const id = ++contentControlId;
+    contentControlPlaceholders.push({
+      Id: id,
+      Text:
+        node.props.ContentControl.Placeholder ||
+        "Click or tap here to enter text.",
+    });
+    return contentControlPropertiesXML(node, id);
+  };
   const zip = new JSZip(),
     rels: string[] = [],
     numberings: string[] = [],
@@ -630,6 +649,11 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     inherited: Record<string, any> = {},
   ): string => {
     const props = { ...inherited, ...n.props };
+    if (n.props.ContentControl) {
+      const pr = controlXML(n);
+      delete props.ContentControl;
+      return `<w:sdt>${pr}<w:sdtContent>${(n.children ?? []).map((c) => inline(c, props)).join("")}</w:sdtContent></w:sdt>`;
+    }
     if (n.type === "Bold") props.FontWeight = "Bold";
     if (n.type === "Italic") props.FontStyle = "Italic";
     if (n.type === "Underline") props.TextDecorations = "Underline";
@@ -916,6 +940,11 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     nodes
       .map((n) => {
         const props = { ...inherited, ...n.props };
+        if (n.props.ContentControl) {
+          const pr = controlXML(n);
+          delete props.ContentControl;
+          return `<w:sdt>${pr}<w:sdtContent>${blocks(n.children ?? [], props, num, level)}</w:sdtContent></w:sdt>`;
+        }
         if (n.type === "Paragraph") return paragraph(n, props, num, level);
         if (n.type === "Section" && n.props.TableOfContents) {
           const xml = parseOfficeXML(
@@ -1284,7 +1313,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     (reviews.some((a) =>
       ["Formatting", "Move", "TableStructure", "Structural"].includes(a.Kind),
     ) ||
-      hasFloatingStory(root)) &&
+      hasFloatingStory(root) ||
+      contentControls.length > 0) &&
     globalThis.crypto?.subtle
   ) {
     const mainXML = await zip.file("word/document.xml")!.async("string");
@@ -1293,6 +1323,16 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     zip.file(
       "customXml/richtextweb-review.xml",
       `<rtw:review xmlns:rtw="${REVIEW_NS}" version="1" mainSha256="${digest}"><rtw:document>${esc(JSON.stringify(root))}</rtw:document></rtw:review>`,
+    );
+  }
+  if (contentControlPlaceholders.length) {
+    relationship("glossaryDocument", "glossary/document.xml");
+    zip.file(
+      "word/glossary/document.xml",
+      `<w:glossaryDocument xmlns:w="${NS}"><w:docParts>${contentControlPlaceholders.map((p) => `<w:docPart><w:docPartPr><w:name w:val="rtwPlaceholder${p.Id}"/><w:category><w:name w:val="General"/><w:gallery w:val="placeholder"/></w:category><w:types><w:type w:val="bbPlcHdr"/></w:types></w:docPartPr><w:docPartBody><w:p><w:r><w:t xml:space="preserve">${esc(p.Text)}</w:t></w:r></w:p></w:docPartBody></w:docPart>`).join("")}</w:docParts></w:glossaryDocument>`,
+    );
+    extraTypes.push(
+      '<Override PartName="/word/glossary/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>',
     );
   }
   relationship("styles", "styles.xml");
@@ -1486,6 +1526,12 @@ export async function fromDOCX(
     numberingRoot = parseOfficeXML(
       await read(findPart("numbering", "numbering.xml")),
     );
+  const contentControlWarnings: string[] = [];
+  const contentControlPlaceholders = readContentControlPlaceholders(
+    parseOfficeXML(
+      await read(findPart("glossaryDocument", "glossary/document.xml")),
+    ),
+  );
   const val = (n?: MarkupNode) => n?.attrs["w:val"];
   const bool = (n?: MarkupNode) =>
     !!n && !["0", "false", "off"].includes(val(n) ?? "");
@@ -1921,6 +1967,22 @@ export async function fromDOCX(
           annotationStarts.delete(prefix + n.attrs["w:id"]);
         }
         return [];
+      }
+      if (n.name === "w:sdt") {
+        const content = inlines(
+          child(n, "w:sdtContent")?.children ?? [],
+          inherited,
+        );
+        const props = readContentControlProperties(
+          n,
+          "Inline",
+          content,
+          contentControlPlaceholders,
+          contentControlWarnings,
+        );
+        return props
+          ? [node("Span", content, { ContentControl: props })]
+          : content;
       }
       if (n.name === "w:hyperlink") {
         const rel = relationships.get(n.attrs["r:id"] ?? ""),
@@ -2457,7 +2519,21 @@ export async function fromDOCX(
         }
         normalizeTableHeaderGroups(table);
         result.push(table);
-      } else if (["w:sdt", "w:sdtContent", "w:ins"].includes(n.name))
+      } else if (n.name === "w:sdt") {
+        const content = convertBlocks(child(n, "w:sdtContent")?.children ?? []);
+        const props = readContentControlProperties(
+          n,
+          "Block",
+          content,
+          contentControlPlaceholders,
+          contentControlWarnings,
+        );
+        result.push(
+          ...(props
+            ? [node("Section", content, { ContentControl: props })]
+            : content),
+        );
+      } else if (["w:sdtContent", "w:ins"].includes(n.name))
         result.push(...convertBlocks(n.children));
     }
     return [...sections, ...result];
@@ -2831,13 +2907,19 @@ export async function fromDOCX(
       const payload = review.children.find((n) => n.name === "rtw:document");
       if (payload) {
         try {
-          return FlowDocument.FromJSON(JSON.parse(textContent(payload)));
+          const candidate = FlowDocument.FromJSON(
+            JSON.parse(textContent(payload)),
+          );
+          collectContentControlNodes(candidate.ToJSON());
+          return candidate;
         } catch {
           /* Invalid optional review metadata must not prevent native document import. */
         }
       }
     }
   }
+  if (contentControlWarnings.length)
+    defaults.ContentControlImportWarnings = contentControlWarnings;
   return FlowDocument.FromJSON(node("FlowDocument", documentBlocks, defaults));
 }
 
@@ -2870,6 +2952,7 @@ function hasFloatingStory(node: DocumentNode): boolean {
   return (
     ["Equation", "Figure", "Floater"].includes(node.type) ||
     node.props?.BreakColumnBefore === true ||
+    node.props?.ContentControl !== undefined ||
     (node.children ?? []).some(hasFloatingStory)
   );
 }

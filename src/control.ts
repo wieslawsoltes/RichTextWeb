@@ -83,7 +83,8 @@ export interface CommandStateChangeDetail {
 const stylesheet = `
 :host{display:block;min-width:0;min-height:160px;--rt-accent:#2463d5;--rt-ink:#182236;--rt-paper:#fff;--rt-workspace:#edf0f5;--rt-border:#d7dce5;color:var(--rt-ink);font-family:Segoe UI,Inter,system-ui,sans-serif;color-scheme:light dark;contain:layout style}
 *{box-sizing:border-box}.viewport{height:100%;min-height:inherit;overflow:auto;background:var(--rt-workspace);padding:28px;scrollbar-gutter:stable;position:relative;overscroll-behavior:contain}.surface{box-sizing:border-box;position:relative;outline:none;margin:0 auto;width:var(--rt-page-width,794px);min-height:var(--rt-page-height,1123px);padding:var(--rt-page-padding,72px);background:var(--rt-paper);color:var(--rt-ink);box-shadow:0 2px 14px #17233a13;border:1px solid var(--rt-border);font:16px/1.5 Georgia,Cambria,serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;caret-color:var(--rt-accent);zoom:var(--rt-zoom,1);tab-size:4}
-.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface .rt-equation{display:inline-block;max-width:100%;vertical-align:baseline;white-space:normal;overflow:visible;line-height:normal}.surface .rt-equation[data-display=true]{display:block;text-align:center;margin:.6em 0;break-inside:avoid}.rt-equation mjx-container{display:inline-block;line-height:0;direction:ltr;text-indent:0}.rt-equation svg{overflow:visible;max-width:100%;height:auto}.rt-equation[aria-invalid=true]{border:1px solid #c42b1c;padding:.2em}.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
+.surface:focus-visible{outline:2px solid color-mix(in srgb,var(--rt-accent) 28%,transparent);outline-offset:3px}.viewport.continuous{padding:0;background:var(--rt-paper)}.continuous .surface{width:100%;min-height:100%;padding:24px;border:0;box-shadow:none}.surface:empty::before,.surface[data-empty=true]::before{content:attr(data-placeholder);position:absolute;color:#818898;pointer-events:none;font-family:Segoe UI,system-ui,sans-serif}.surface p{margin:0 0 .7em;min-height:1.5em}.surface p:last-child{margin-bottom:0}.surface h1,.surface h2,.surface h3,.surface h4,.surface h5,.surface h6{font-family:Segoe UI,system-ui,sans-serif;line-height:1.2;margin:1em 0 .45em;break-after:avoid}.surface h1{font-size:2em}.surface h2{font-size:1.5em}.surface h3{font-size:1.2em}.surface h1:first-child,.surface h2:first-child{margin-top:0}.surface a{color:var(--rt-accent);text-decoration:underline;cursor:text}.surface [contenteditable=false]{cursor:default}.surface table{border-collapse:collapse;margin:.75em 0;max-width:100%;width:100%;table-layout:fixed}.surface td,.surface th{border:1px solid #b8c0ce;padding:8px 10px;vertical-align:top;min-width:24px}.surface th{background:color-mix(in srgb,var(--rt-accent) 8%,var(--rt-paper));font-weight:600}.surface td p,.surface th p{margin:0}.surface ul,.surface ol{padding-inline-start:1.7em;margin:.5em 0}.surface li>p{margin-bottom:.25em}.surface img{max-width:100%;object-fit:contain;vertical-align:middle}.surface .rt-embedded{display:inline-block;border:1px dashed var(--rt-border);padding:4px 8px;border-radius:3px;font-family:Segoe UI,system-ui,sans-serif;font-size:.85em}.surface div.rt-embedded{display:block}.surface .rt-equation{display:inline-block;max-width:100%;vertical-align:baseline;white-space:normal;overflow:visible;line-height:normal}.surface .rt-equation[data-display=true]{display:block;text-align:center;margin:.6em 0;break-inside:avoid}.rt-equation mjx-container{display:inline-block;line-height:0;direction:ltr;text-indent:0}.rt-equation svg{overflow:visible;max-width:100%;height:auto}.rt-equation[aria-invalid=true]{border:1px solid #c42b1c;padding:.2em}[data-rt-content-control]{outline:1px dashed var(--rt-border);outline-offset:2px;border-radius:2px}[data-rt-content-control]:focus{outline:2px solid var(--rt-accent)}[data-rt-control-placeholder=true]{color:#63738a;background:color-mix(in srgb,var(--rt-accent) 6%,transparent)}[data-rt-control-kind=CheckBox]{cursor:pointer!important}[data-rt-content-control][aria-disabled=true]{cursor:default!important}@media print{[data-rt-content-control]{outline:none!important;background:none!important}}
+.surface ::selection{background:color-mix(in srgb,var(--rt-accent) 25%,transparent)}
 :host([theme=dark]){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}:host([theme=light]){color-scheme:light}:host([theme=dark]){color-scheme:dark}@media(prefers-color-scheme:dark){:host(:not([theme=light])){--rt-ink:#e7e9ef;--rt-paper:#242730;--rt-workspace:#1a1d24;--rt-border:#3a4050}}@media(max-width:640px){.viewport{padding:12px}.surface{padding:32px;width:max(100%,var(--rt-page-width,794px))}.continuous .surface{width:100%;padding:18px}}@media print{:host{display:block;height:auto!important;contain:none;--rt-paper:white;--rt-ink:black}.viewport{height:auto!important;overflow:visible;padding:0;background:white}.surface,.continuous .surface{width:auto;min-height:0;margin:0;padding:0;border:0;box-shadow:none;zoom:1!important;outline:none!important}.surface td,.surface th{break-inside:avoid}.surface a{color:inherit}}`;
 
 /** A model-backed, framework-independent rich text editing control. */
@@ -189,10 +190,11 @@ export class RichTextBox extends HTMLElementBase {
     });
     editor.addEventListener("load", () => this.queueVirtualRefresh(), true);
     editor.addEventListener("beforeinput", (event) =>
-      this.beforeInput(event as InputEvent),
+      this.userInput(event, () => this.beforeInput(event as InputEvent)),
     );
-    editor.addEventListener("input", () => {
-      if (!this._composing) this.reconcileNativeInput();
+    editor.addEventListener("input", (event) => {
+      if (!this._composing)
+        this.userInput(event, () => this.reconcileNativeInput());
     });
     editor.addEventListener("compositionstart", () => {
       this.syncSelection();
@@ -200,11 +202,33 @@ export class RichTextBox extends HTMLElementBase {
       this._compositionBase = this.Document.Text;
       this._composing = true;
     });
-    editor.addEventListener("compositionend", () => {
+    editor.addEventListener("compositionend", (event) => {
       this._composing = false;
-      queueMicrotask(() => this.reconcileNativeInput());
+      queueMicrotask(() =>
+        this.userInput(event, () => this.reconcileNativeInput()),
+      );
     });
-    editor.addEventListener("keydown", (event) => this.keyDown(event));
+    editor.addEventListener("keydown", (event) =>
+      this.userInput(event, () => {
+        const target = (event.target as Element)?.closest?.<HTMLElement>(
+          "[data-rt-content-control]",
+        );
+        if (
+          target &&
+          ["Enter", " "].includes(event.key) &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.isComposing &&
+          target === this.shadowRoot?.activeElement
+        ) {
+          event.preventDefault();
+          this.activateContentControl(target.dataset.rtContentControl!);
+          return;
+        }
+        this.keyDown(event);
+      }),
+    );
     editor.addEventListener("keyup", () => this.syncSelection());
     editor.addEventListener("pointerup", () => this.syncSelection());
     editor.addEventListener("pointerdown", (event) => {
@@ -220,13 +244,34 @@ export class RichTextBox extends HTMLElementBase {
       this.emit("objectselectionchange", { elementId: this._selectedObjectId });
     });
     editor.addEventListener("dblclick", (event) => {
+      const target = (event.target as Element)?.closest?.<HTMLElement>(
+        "[data-rt-content-control]",
+      );
+      if (target) {
+        event.preventDefault();
+        if (
+          !["CheckBox", "Date", "DropDownList", "ComboBox"].includes(
+            target.dataset.rtControlKind!,
+          )
+        )
+          this.userInput(event, () =>
+            this.activateContentControl(target.dataset.rtContentControl!),
+          );
+        return;
+      }
       if (this._selectedObjectId && !this.IsReadOnly)
         this.emit("objecteditrequest", { elementId: this._selectedObjectId });
     });
     editor.addEventListener("focus", () => this.restoreSelection());
-    editor.addEventListener("copy", (event) => this.copy(event, false));
-    editor.addEventListener("cut", (event) => this.copy(event, true));
-    editor.addEventListener("paste", (event) => this.paste(event));
+    editor.addEventListener("copy", (event) =>
+      this.userInput(event, () => this.copy(event, false)),
+    );
+    editor.addEventListener("cut", (event) =>
+      this.userInput(event, () => this.copy(event, true)),
+    );
+    editor.addEventListener("paste", (event) =>
+      this.userInput(event, () => this.paste(event)),
+    );
     editor.addEventListener("dragover", (event) => {
       if (
         !this.IsReadOnly &&
@@ -238,8 +283,26 @@ export class RichTextBox extends HTMLElementBase {
         event.dataTransfer.dropEffect = "copy";
       }
     });
-    editor.addEventListener("drop", (event) => this.drop(event));
+    editor.addEventListener("drop", (event) =>
+      this.userInput(event, () => this.drop(event)),
+    );
     editor.addEventListener("click", (event) => {
+      const target = (event.target as Element)?.closest?.<HTMLElement>(
+        "[data-rt-content-control]",
+      );
+      if (
+        target &&
+        (["CheckBox", "Date", "DropDownList", "ComboBox"].includes(
+          target.dataset.rtControlKind!,
+        ) ||
+          target.dataset.rtControlPlaceholder === "true")
+      ) {
+        event.preventDefault();
+        this.userInput(event, () =>
+          this.activateContentControl(target.dataset.rtContentControl!),
+        );
+        return;
+      }
       const link = (event.target as Element)?.closest?.("a");
       if (link) {
         event.preventDefault();
@@ -252,6 +315,31 @@ export class RichTextBox extends HTMLElementBase {
     });
   }
 
+  private userInput(event: Event, action: () => void): void {
+    try {
+      action();
+    } catch (error) {
+      // A rejected model edit must also cancel the browser's native default edit.
+      event.preventDefault();
+      this.Refresh();
+      this.restoreSelection();
+      this.emit("inputrejected", {
+        message: error instanceof Error ? error.message : String(error),
+        error,
+      });
+    }
+  }
+  private activateContentControl(id: string): void {
+    if (this.IsReadOnly) return;
+    const control = this.Engine.GetContentControls().find((c) => c.Id === id);
+    if (!control || control.Properties.LockContents || control.Start === null)
+      return;
+    this.Select(control.Start, control.End!);
+    if (control.Properties.Kind === "CheckBox") {
+      this.Engine.SetContentControlValue(id, !control.Value);
+      this.restoreSelection();
+    } else this.emit("contentcontroleditrequest", { id });
+  }
   connectedCallback(): void {
     if (this._disposed || this._connected) return;
     this._connected = true;
@@ -717,6 +805,30 @@ export class RichTextBox extends HTMLElementBase {
     this.restoreSelection();
     return result;
   }
+  GetContentControls() {
+    return this.Engine.GetContentControls();
+  }
+  GetSelectedContentControl() {
+    return this.Engine.GetSelectedContentControl();
+  }
+  GetFormData() {
+    return this.Engine.GetFormData();
+  }
+  ValidateForm() {
+    return this.Engine.ValidateForm();
+  }
+  SetContentControlValue(id: string, value: string | boolean): boolean {
+    if (this.IsReadOnly) return false;
+    this.Engine.SetContentControlValue(id, value);
+    this.restoreSelection();
+    return true;
+  }
+  FillForm(data: Record<string, string | boolean>, strict = true): boolean {
+    if (this.IsReadOnly) return false;
+    this.Engine.FillForm(data, strict);
+    this.restoreSelection();
+    return true;
+  }
   Execute(command: string, parameter?: any): unknown {
     const name = command.replace(
       /^(EditingCommands|ApplicationCommands)\./,
@@ -740,7 +852,17 @@ export class RichTextBox extends HTMLElementBase {
       this.Print();
       return;
     }
-    if (this.IsReadOnly && normalized !== "find") return false;
+    if (
+      this.IsReadOnly &&
+      ![
+        "find",
+        "getcontentcontrols",
+        "getformdata",
+        "validateform",
+        "selectcontentcontrol",
+      ].includes(normalized)
+    )
+      return false;
     this.syncSelection();
     const result = this._engine.Execute(name, parameter);
     this.restoreSelection();
@@ -939,7 +1061,10 @@ export class RichTextBox extends HTMLElementBase {
           detail,
           bubbles: true,
           composed: true,
-          cancelable: name === "objecteditrequest",
+          cancelable: [
+            "objecteditrequest",
+            "contentcontroleditrequest",
+          ].includes(name),
         }),
       );
   }

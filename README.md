@@ -17,6 +17,14 @@ npm install @wieslawsoltes/richtextweb
 
 The [complete original guide](README.web.md) preserves JavaScript/React/MVVM usage, desktop adapters, architecture, tests, compatibility matrices and licensing. [Open the web demo](https://wieslawsoltes.github.io/RichTextWeb/).
 
+## Fillable content controls — source, unreleased
+
+RichTextWeb now has inline and block **rich text, plain text, checkbox, dropdown, combo and date content controls**. The standalone engine owns typed values, tags, placeholders, independent editing/deletion locks, atomic form filling and undo. Native DOCX SDTs preserve supported controls without depending on private RichTextWeb metadata. Unsupported native control properties produce explicit import diagnostics.
+
+The reusable toolbar adds insertion, properties, value editing, isolated rich drafts, form-data inspection/filling and required-value checks. Document Studio's **Fillable project brief** template and Developer ribbon use the same APIs. [Content-control APIs, native interchange and limits](docs/CONTENT-CONTROLS.md) · [Updated complete feature audit](docs/WORD-FEATURE-AUDIT.md).
+
+This does not implement every Word form feature or a security boundary: picture/repeating/building-block controls, custom XML binding, legacy forms and restricted-editing permissions remain. Required/maximum-length rules are local application metadata. Source/package versions are unchanged.
+
 ## Word authoring extension — source, unreleased
 
 The core engine and reusable controls now include bounded table formulas with 18 functions and table/range dependencies; stable three-key rich table sorting; repeat-header authoring; numbered captions, bookmark cross-references and tables of figures/tables; expanded native fields, field editing/locking/unlinking, document properties/variables and Unicode word/selection statistics. Native DOCX tests exercise these without relying on the private RichTextWeb extension. Field cache loss, embedded-object offsets and typing at field/caption boundaries are also fixed.

@@ -1,4 +1,19 @@
 import {
+  collectContentControlNodes,
+  contentControlValue,
+  createContentControl,
+  enforceContentControlMutation,
+  getContentControls,
+  rekeyContentControls,
+  validateContentControlNode,
+  validateContentControlProperties,
+  validateContentControls,
+  withContentControlValue,
+  type ContentControlOptions,
+  type ContentControlInfo,
+  type ContentControlWrite,
+} from "./content-controls.js";
+import {
   buildTableGrid,
   sortTableRows,
   normalizeTableHeaderGroups,
@@ -26,6 +41,7 @@ import {
   mapMetadata,
   newIds,
   plainText,
+  replaceInlineControlText,
   pointBlock,
   run,
   sliceInlines,
@@ -608,12 +624,15 @@ export class RichTextEngine {
     mapStructure = true,
     exactTextChange?: TextEditSpan | TextEditSpan[],
     review?: { Kind: string; Operation: string; Data?: Record<string, any> },
+    controlWrites?: ContentControlWrite[],
   ): void {
     this.assertLive();
     const before = this.snapshot(),
       root = clone(before.document);
     try {
       action(root);
+      if (this.historySuppressed) collectContentControlNodes(root);
+      else enforceContentControlMutation(before.document, root, controlWrites);
       if (mapStructure) mapStructuralAnnotations(before.document, root);
       if (
         review &&
@@ -697,6 +716,31 @@ export class RichTextEngine {
     this.assertLive();
     if (!text && this.start === this.end) return;
     text = text.replace(/\r\n?/g, "\n");
+    // Placeholder text is presentation, not user data. Typing a selected placeholder
+    // or strictly inside it replaces the whole value in one reversible operation.
+    if (text) {
+      let current: TextElement | null = this.Selection.Start.Parent;
+      while (current) {
+        if (current.GetValue("ContentControl")?.ShowingPlaceholder) {
+          const selected = this.GetContentControls().find(
+            (c) => c.NodeId === current!.Id,
+          );
+          if (
+            selected &&
+            selected.Start !== null &&
+            ((this.start > selected.Start && this.end < selected.End!) ||
+              (this.start === selected.Start && this.end === selected.End))
+          ) {
+            this.Change(() => {
+              this.SetContentControlValue(selected.Id, text);
+              this.Select(selected.Start! + text.length);
+            });
+            return;
+          }
+        }
+        current = current.Parent;
+      }
+    }
     if (this.tryDirectTextEdit(text)) return;
     const props = this.insertionProperties();
     this.mutate(
@@ -707,11 +751,16 @@ export class RichTextEngine {
         const tracked = this.TrackChanges && !this.reviewSuppressed;
         const deletion =
           tracked && to > from ? captureDeletion(root, from, to) : undefined;
-        deleteRange(root, from, to);
-        const position = Math.min(from, plainText(root).length);
-        this.start = this.end = text
-          ? insertText(root, position, text, props)
-          : position;
+        let position = from;
+        if (replaceInlineControlText(root, from, to, text, props))
+          this.start = this.end = from + text.length;
+        else {
+          deleteRange(root, from, to);
+          position = Math.min(from, plainText(root).length);
+          this.start = this.end = text
+            ? insertText(root, position, text, props)
+            : position;
+        }
         mapMetadata(
           root,
           from,
@@ -780,7 +829,8 @@ export class RichTextEngine {
       current;
       current = current.Parent
     )
-      if (current.GetValue("Field")) return false;
+      if (current.GetValue("Field") || current.GetValue("ContentControl"))
+        return false;
     if (
       Object.entries(this.typing).some(
         ([name, value]) => !sameValue(run.GetValue(name), value),
@@ -859,102 +909,124 @@ export class RichTextEngine {
     if (
       ["Formatting", "Move", "TableStructure", "Structural"].includes(item.Kind)
     ) {
-      this.mutate((root) => {
-        if (Array.isArray(item.Data.PropertyChanges)) {
-          const changes = item.Data.PropertyChanges as RevisionPropertyChange[];
-          // Validate all targets first: an incompatible later edit must not be overwritten.
-          for (const change of changes) validateRevisionProperty(root, change);
-          for (const change of [...changes].reverse()) {
-            const value = change.HadBefore ? change.Before : undefined;
-            if (change.Scope === "Inline")
-              formatRange(root, change.Start!, change.End!, change.Name, value);
-            else
-              setLocalProperty(
-                findNode(root, change.NodeId!)!,
-                change.Name,
-                value,
-              );
-          }
-        } else if (Array.isArray(item.Data.StructureChanges)) {
-          for (const change of item.Data.StructureChanges) {
-            const parent = findNode(root, change.ParentId);
-            if (!parent || !Array.isArray(parent.children))
-              throw new Error(
-                "Revision conflict: table container no longer exists.",
-              );
-            const removed: DocumentNode[] = change.Removed ?? [],
-              inserted: DocumentNode[] = change.Inserted ?? [];
-            let index = change.Index;
-            if (removed.length) {
-              index = parent.children.findIndex((node, at, children) =>
-                removed.every((old, i) => children[at + i]?.id === old.id),
-              );
-              if (
-                index < 0 ||
-                !sameValue(
-                  parent.children.slice(index, index + removed.length),
-                  removed,
-                )
-              )
-                throw new Error(
-                  "Revision conflict: table content has changed.",
+      const controlWrites: ContentControlWrite[] = [];
+      this.mutate(
+        (root) => {
+          if (Array.isArray(item.Data.PropertyChanges)) {
+            const changes = item.Data
+              .PropertyChanges as RevisionPropertyChange[];
+            // Validate all targets first: an incompatible later edit must not be overwritten.
+            for (const change of changes)
+              validateRevisionProperty(root, change);
+            for (const change of [...changes].reverse()) {
+              const value = change.HadBefore ? change.Before : undefined;
+              if (change.Scope === "Inline")
+                formatRange(
+                  root,
+                  change.Start!,
+                  change.End!,
+                  change.Name,
+                  value,
+                );
+              else
+                setLocalProperty(
+                  findNode(root, change.NodeId!)!,
+                  change.Name,
+                  value,
                 );
             }
-            if (
-              !Number.isInteger(index) ||
-              index < 0 ||
-              index > parent.children.length ||
-              inserted.some((node) => findNode(root, node.id))
-            )
-              throw new Error(
-                "Revision conflict: table restoration context is invalid.",
-              );
-            parent.children.splice(index, removed.length, ...clone(inserted));
-          }
-        } else if (item.Data.RestorePatch) {
-          const restored = ApplyPatchToJSON(
-            root,
-            relocateRevisionPatch(
+          } else if (Array.isArray(item.Data.StructureChanges)) {
+            for (const change of item.Data.StructureChanges) {
+              const parent = findNode(root, change.ParentId);
+              if (!parent || !Array.isArray(parent.children))
+                throw new Error(
+                  "Revision conflict: table container no longer exists.",
+                );
+              const removed: DocumentNode[] = change.Removed ?? [],
+                inserted: DocumentNode[] = change.Inserted ?? [];
+              let index = change.Index;
+              if (removed.length) {
+                index = parent.children.findIndex((node, at, children) =>
+                  removed.every((old, i) => children[at + i]?.id === old.id),
+                );
+                if (
+                  index < 0 ||
+                  !sameValue(
+                    parent.children.slice(index, index + removed.length),
+                    removed,
+                  )
+                )
+                  throw new Error(
+                    "Revision conflict: table content has changed.",
+                  );
+              }
+              if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index > parent.children.length ||
+                inserted.some((node) => findNode(root, node.id))
+              )
+                throw new Error(
+                  "Revision conflict: table restoration context is invalid.",
+                );
+              parent.children.splice(index, removed.length, ...clone(inserted));
+            }
+          } else if (item.Data.RestorePatch) {
+            const restored = ApplyPatchToJSON(
               root,
-              item.Data.RestorePatch,
-              item.Data.StructureAnchors,
-            ),
-          );
-          root.props = restored.props;
-          root.children = restored.children;
-          root.text = restored.text;
-        } else if (item.Kind === "Move" && Array.isArray(item.Data.Nodes)) {
-          if (
-            plainText(root).slice(item.Start, item.End) !== item.Data.Text ||
-            !Number.isInteger(item.Data.SourceStart)
-          )
-            throw new Error(
-              "Revision conflict: moved content no longer matches its source.",
+              relocateRevisionPatch(
+                root,
+                item.Data.RestorePatch,
+                item.Data.StructureAnchors,
+              ),
             );
-          const preview = new RichTextEngine(FlowDocument.FromJSON(root));
-          try {
-            preview.Select(item.Start, item.End);
-            preview.InsertText("");
-            const source =
-              item.Data.SourceStart > item.End
-                ? item.Data.SourceStart - (item.End - item.Start)
-                : item.Data.SourceStart;
-            preview.Select(source);
-            preview.InsertFragment(item.Data.Nodes);
-            const restored = preview.Document.ToJSON();
+            // The inverse patch already verifies its original mutation context.
+            // Permit typed metadata restoration, but continue enforcing later locks.
+            for (const control of collectContentControlNodes(restored))
+              controlWrites.push({
+                Id: control.props.ContentControl.Id,
+                Operation: "Value",
+              });
             root.props = restored.props;
             root.children = restored.children;
-          } finally {
-            preview.Dispose();
-          }
-        } else
-          throw new Error(
-            "Revision conflict: this revision has no supported restoration data.",
+            root.text = restored.text;
+          } else if (item.Kind === "Move" && Array.isArray(item.Data.Nodes)) {
+            if (
+              plainText(root).slice(item.Start, item.End) !== item.Data.Text ||
+              !Number.isInteger(item.Data.SourceStart)
+            )
+              throw new Error(
+                "Revision conflict: moved content no longer matches its source.",
+              );
+            const preview = new RichTextEngine(FlowDocument.FromJSON(root));
+            try {
+              preview.Select(item.Start, item.End);
+              preview.InsertText("");
+              const source =
+                item.Data.SourceStart > item.End
+                  ? item.Data.SourceStart - (item.End - item.Start)
+                  : item.Data.SourceStart;
+              preview.Select(source);
+              preview.InsertFragment(item.Data.Nodes);
+              const restored = preview.Document.ToJSON();
+              root.props = restored.props;
+              root.children = restored.children;
+            } finally {
+              preview.Dispose();
+            }
+          } else
+            throw new Error(
+              "Revision conflict: this revision has no supported restoration data.",
+            );
+          root.props.Annotations = (root.props.Annotations ?? []).filter(
+            (entry: DocumentAnnotation) => entry.Id !== id,
           );
-        root.props.Annotations = (root.props.Annotations ?? []).filter(
-          (entry: DocumentAnnotation) => entry.Id !== id,
-        );
-      });
+        },
+        true,
+        undefined,
+        undefined,
+        controlWrites,
+      );
       return;
     }
     if (
@@ -1308,6 +1380,7 @@ export class RichTextEngine {
         deleteRange(root, from, to);
         const block = pointBlock(root, Math.min(from, plainText(root).length));
         const inserted = list.map(newIds);
+        inserted.forEach(rekeyContentControls);
         insertedIds = inserted.map((node) => node.id);
         if (block.node.type !== "Paragraph")
           throw new Error(
@@ -1444,6 +1517,302 @@ export class RichTextEngine {
       }),
     );
   }
+  GetContentControls(): ContentControlInfo[] {
+    return getContentControls(this.Document.ToJSON());
+  }
+  GetSelectedContentControl(): ContentControlInfo | null {
+    return (
+      this.GetContentControls()
+        .filter(
+          (c) =>
+            c.Start !== null && this.start >= c.Start && this.end <= c.End!,
+        )
+        .sort((a, b) => a.End! - a.Start! - (b.End! - b.Start!))[0] ?? null
+    );
+  }
+  SelectContentControl(id: string): void {
+    const info = this.GetContentControls().find((c) => c.Id === id);
+    if (!info || info.Start === null)
+      throw new Error("The control is not in the main text story.");
+    this.Select(info.Start, info.End!);
+  }
+  InsertContentControl(
+    options: ContentControlOptions,
+    value?: string | boolean,
+  ): string {
+    const node = createContentControl(
+      options,
+      value ?? (options.Kind === "CheckBox" ? false : this.Selection.Text),
+    );
+    if (
+      options.Kind === "RichText" &&
+      value === undefined &&
+      this.start !== this.end
+    ) {
+      const blocks = this.GetSelectedFragment().ToJSON().children ?? [];
+      if (
+        node.type === "Span" &&
+        (blocks.length !== 1 || blocks[0]?.type !== "Paragraph")
+      )
+        throw new Error(
+          "Use a block content control to wrap multiple paragraphs or tables.",
+        );
+      node.children = node.type === "Span" ? blocks[0]!.children : blocks;
+      node.props.ContentControl.ShowingPlaceholder = false;
+      validateContentControlNode(node);
+    }
+    const nodeId = this.InsertNode(node);
+    return this.Document.FindById(nodeId)!.GetValue("ContentControl").Id;
+  }
+  private changeContentControls(
+    next: Map<string, DocumentNode>,
+    writes: ContentControlWrite[],
+    operation: string,
+  ): void {
+    const infos = this.GetContentControls();
+    // Exact text splices are safe only for disjoint main-story control ranges.
+    const spans = infos
+      .filter(
+        (c) =>
+          next.has(c.Id) &&
+          c.Start !== null &&
+          c.Text !==
+            (next.get(c.Id)!.type === "Section"
+              ? plainText(next.get(c.Id)!)
+              : inlineText(next.get(c.Id)!)),
+      )
+      .map((c) => ({
+        Start: c.Start!,
+        RemovedLength: c.End! - c.Start!,
+        InsertedLength:
+          next.get(c.Id)!.type === "Section"
+            ? plainText(next.get(c.Id)!).length
+            : inlineText(next.get(c.Id)!).length,
+      }))
+      .sort((a, b) => a.Start - b.Start);
+    if (
+      spans.some(
+        (s, i) =>
+          i > 0 && s.Start < spans[i - 1].Start + spans[i - 1].RemovedLength,
+      )
+    )
+      throw new Error(
+        "Update nested content controls in separate operations, not overlapping replacements.",
+      );
+    const move = (offset: number) => {
+      let delta = 0;
+      for (const s of spans) {
+        if (offset <= s.Start) break;
+        if (offset < s.Start + s.RemovedLength)
+          return s.Start + delta + s.InsertedLength;
+        delta += s.InsertedLength - s.RemovedLength;
+      }
+      return offset + delta;
+    };
+    this.mutate(
+      (root) => {
+        for (const control of collectContentControlNodes(root)) {
+          const replacement = next.get(control.props.ContentControl.Id);
+          if (replacement) {
+            control.props = clone(replacement.props);
+            control.children = clone(replacement.children);
+          }
+        }
+        // Exact substitutions use pre-edit coordinates. A bookmark at the trailing
+        // edge belongs to following text, not to the replaced value.
+        const map = (offset: number, trailing: boolean) => {
+          let delta = 0;
+          for (const s of spans) {
+            if (offset < s.Start) break;
+            const end = s.Start + s.RemovedLength;
+            if (offset === s.Start && s.RemovedLength > 0)
+              return s.Start + delta;
+            if (offset < end)
+              return s.Start + delta + (trailing ? s.InsertedLength : 0);
+            if (offset === end && !s.RemovedLength && trailing)
+              return offset + delta;
+            delta += s.InsertedLength - s.RemovedLength;
+          }
+          return offset + delta;
+        };
+        for (const annotation of root.props.Annotations ?? []) {
+          const collapsed = annotation.Start === annotation.End;
+          annotation.Start = map(annotation.Start, false);
+          annotation.End =
+            collapsed || annotation.Kind === "Deletion"
+              ? annotation.Start
+              : Math.max(annotation.Start, map(annotation.End, true));
+        }
+        this.start = move(this.start);
+        this.end = Math.max(this.start, move(this.end));
+      },
+      false,
+      spans,
+      { Kind: "Structural", Operation: operation },
+      writes,
+    );
+  }
+  SetContentControlValue(id: string, value: string | boolean): void {
+    const node = collectContentControlNodes(this.Document.ToJSON()).find(
+      (c) => c.props.ContentControl.Id === id,
+    );
+    if (!node) throw new Error("Content control not found.");
+    const next = withContentControlValue(node, value); // Preflight even unchanged values.
+    if (contentControlValue(node) === value) return;
+    this.changeContentControls(
+      new Map([[id, next]]),
+      [{ Id: id, Operation: "Value" }],
+      "SetContentControlValue",
+    );
+  }
+  SetContentControlContent(id: string, content: DocumentNode[]): void {
+    const node = collectContentControlNodes(this.Document.ToJSON()).find(
+      (c) => c.props.ContentControl.Id === id,
+    );
+    if (!node || node.props.ContentControl.Kind !== "RichText")
+      throw new Error("Select a rich-text content control.");
+    if (!Array.isArray(content) || !content.length)
+      throw new TypeError("Rich controls require inline or block content.");
+    const next = clone(node);
+    next.children = content.map(newIds);
+    next.props.ContentControl.ShowingPlaceholder = false;
+    validateContentControlNode(next);
+    // Validate ownership/category constraints before starting the mutation.
+    FlowDocument.FromJSON(
+      makeNode(
+        "FlowDocument",
+        node.type === "Section" ? [next] : [makeNode("Paragraph", [next])],
+      ),
+    );
+    this.changeContentControls(
+      new Map([[id, next]]),
+      [{ Id: id, Operation: "Value" }],
+      "SetContentControlContent",
+    );
+  }
+  SetContentControlProperties(
+    id: string,
+    options: Partial<ContentControlOptions>,
+  ): void {
+    if (
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      ["Id", "Value", "ShowingPlaceholder", "Level", "Kind"].some(
+        (k) => k in options,
+      )
+    )
+      throw new TypeError(
+        "Kind, level and identity are immutable; change other control properties explicitly.",
+      );
+    const node = collectContentControlNodes(this.Document.ToJSON()).find(
+      (c) => c.props.ContentControl.Id === id,
+    );
+    if (!node) throw new Error("Content control not found.");
+    let next = clone(node);
+    next.props.ContentControl = validateContentControlProperties({
+      ...node.props.ContentControl,
+      ...options,
+    });
+    if (
+      next.props.ContentControl.Kind !== "RichText" ||
+      next.props.ContentControl.ShowingPlaceholder
+    )
+      next = withContentControlValue(next, contentControlValue(node));
+    validateContentControlNode(next);
+    this.changeContentControls(
+      new Map([[id, next]]),
+      [{ Id: id, Operation: "Properties" }],
+      "SetContentControlProperties",
+    );
+  }
+  RemoveContentControl(id: string, keepContent = true): void {
+    if (typeof keepContent !== "boolean")
+      throw new TypeError("keepContent must be boolean.");
+    if (
+      !collectContentControlNodes(this.Document.ToJSON()).some(
+        (c) => c.props.ContentControl.Id === id,
+      )
+    )
+      throw new Error("Content control not found.");
+    this.mutate(
+      (root) => {
+        const visit = (nodes: DocumentNode[]) => {
+          for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            if (n.props.ContentControl?.Id === id) {
+              nodes.splice(i, 1, ...(keepContent ? (n.children ?? []) : []));
+              return true;
+            }
+            if (visit(n.children ?? [])) return true;
+            for (const key of [
+              "Headers",
+              "Footers",
+              "FirstPageHeader",
+              "FirstPageFooter",
+              "EvenPageHeader",
+              "EvenPageFooter",
+            ])
+              if (visit(n.props[key] ?? [])) return true;
+            for (const key of ["Footnotes", "Endnotes"])
+              for (const note of n.props[key] ?? [])
+                if (visit(note.Blocks ?? [])) return true;
+          }
+          return false;
+        };
+        visit([root]);
+      },
+      true,
+      undefined,
+      { Kind: "Structural", Operation: "RemoveContentControl" },
+      [{ Id: id, Operation: "Remove" }],
+    );
+  }
+  GetFormData(): Record<string, string | boolean> {
+    const data: Record<string, string | boolean> = Object.create(null);
+    for (const c of this.GetContentControls()) {
+      const tag = c.Properties.Tag;
+      if (!tag) continue;
+      if (Object.hasOwn(data, tag) && data[tag] !== c.Value)
+        throw new Error(`Controls tagged '${tag}' have different values.`);
+      data[tag] = c.Value;
+    }
+    return data;
+  }
+  FillForm(data: Record<string, string | boolean>, strict = true): void {
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      Object.keys(data).length > 10000 ||
+      typeof strict !== "boolean"
+    )
+      throw new TypeError(
+        "FillForm requires a bounded value dictionary and boolean strict option.",
+      );
+    const nodes = collectContentControlNodes(this.Document.ToJSON()),
+      next = new Map<string, DocumentNode>();
+    if (strict)
+      for (const key of Object.keys(data))
+        if (!nodes.some((n) => n.props.ContentControl.Tag === key))
+          throw new Error(`Unknown form tag: ${key}.`);
+    for (const node of nodes) {
+      const p = node.props.ContentControl,
+        tag = p.Tag;
+      if (!tag || !Object.hasOwn(data, tag)) continue;
+      const checked = withContentControlValue(node, data[tag]);
+      if (contentControlValue(node) !== data[tag]) next.set(p.Id, checked);
+    }
+    if (next.size)
+      this.changeContentControls(
+        next,
+        [...next.keys()].map((Id) => ({ Id, Operation: "Value" })),
+        "FillForm",
+      );
+  }
+  ValidateForm() {
+    return validateContentControls(this.Document.ToJSON());
+  }
   InsertTable(rows = 2, columns = 2): void {
     if (
       !Number.isInteger(rows) ||
@@ -1504,13 +1873,28 @@ export class RichTextEngine {
         .filter((value): value is DocumentNode => !!value);
       return children.length ? { ...clone(item), children } : undefined;
     };
-    return FlowDocument.FromJSON({
+    const fragment = {
       ...clone(root),
       props: { ...root.props, Annotations: [] },
       children: (root.children ?? [])
         .map(extract)
         .filter((value): value is DocumentNode => !!value),
-    });
+    };
+    const partial = new Set(
+      this.GetContentControls()
+        .filter(
+          (c) =>
+            c.Start !== null && (this.start > c.Start || this.end < c.End!),
+        )
+        .map((c) => c.Id),
+    );
+    const prune = (node: DocumentNode) => {
+      if (partial.has(node.props.ContentControl?.Id))
+        delete node.props.ContentControl;
+      node.children?.forEach(prune);
+    };
+    prune(fragment);
+    return FlowDocument.FromJSON(fragment);
   }
   RemoveHyperlink(): void {
     this.mutate(
@@ -2136,6 +2520,17 @@ export class RichTextEngine {
     if (typeof replacement !== "string")
       throw new TypeError("Replacement must be a string.");
     const matches = this.Find(find, options);
+    if (matches.length && this.GetContentControls().length) {
+      const preview = new RichTextEngine(this.Document.Clone());
+      try {
+        for (const match of [...matches].reverse()) {
+          preview.Select(match.Start, match.End);
+          preview.InsertText(replacement);
+        }
+      } finally {
+        preview.Dispose();
+      }
+    }
     this.Change(() => {
       for (const match of [...matches].reverse()) {
         this.Select(match.Start, match.End);
@@ -2330,6 +2725,38 @@ export class RichTextEngine {
               parameter.Width ?? parameter.width,
               parameter.Height ?? parameter.height,
             );
+      case "insertcontentcontrol":
+        return this.InsertContentControl(
+          parameter?.Options ?? parameter,
+          parameter?.Value,
+        );
+      case "setcontentcontrolvalue":
+        return this.SetContentControlValue(parameter.Id, parameter.Value);
+      case "setcontentcontrolproperties":
+        return this.SetContentControlProperties(
+          parameter.Id,
+          parameter.Properties,
+        );
+      case "setcontentcontrolcontent":
+        return this.SetContentControlContent(parameter.Id, parameter.Content);
+      case "removecontentcontrol":
+        return this.RemoveContentControl(
+          parameter.Id ?? parameter,
+          parameter.KeepContent ?? true,
+        );
+      case "selectcontentcontrol":
+        return this.SelectContentControl(parameter);
+      case "getcontentcontrols":
+        return this.GetContentControls();
+      case "getformdata":
+        return this.GetFormData();
+      case "fillform":
+        return this.FillForm(
+          parameter.Data ?? parameter,
+          parameter.Strict ?? true,
+        );
+      case "validateform":
+        return this.ValidateForm();
       case "inserttable":
         return this.InsertTable(
           parameter?.Rows ?? parameter?.rows ?? 2,

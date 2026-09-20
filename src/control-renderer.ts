@@ -1,3 +1,4 @@
+import { validateContentControlProperties } from "./content-controls.js";
 import { renderEquation, equationOptions } from "./equations.js";
 import type { DocumentNode, TextElement } from "./model.js";
 import type { VirtualWindow } from "./virtualization.js";
@@ -543,6 +544,36 @@ export function renderDocument(
     element.dataset.rtId = current.id;
     element.dataset.rtType = current.type;
     applyStyle(element, props);
+    if (current.props.ContentControl) {
+      const control = validateContentControlProperties(
+        current.props.ContentControl,
+      );
+      element.dataset.rtContentControl = control.Id;
+      element.dataset.rtControlKind = control.Kind;
+      element.dataset.rtControlPlaceholder = String(control.ShowingPlaceholder);
+      element.title =
+        control.Title || control.Tag || `${control.Kind} content control`;
+      element.setAttribute("aria-label", element.title);
+      element.tabIndex = 0;
+      element.setAttribute(
+        "role",
+        control.Kind === "CheckBox"
+          ? "checkbox"
+          : ["PlainText", "RichText"].includes(control.Kind)
+            ? "group"
+            : "button",
+      );
+      if (control.Kind === "CheckBox")
+        element.setAttribute("aria-checked", String(control.Value));
+      if (control.LockContents) element.setAttribute("aria-disabled", "true");
+      if (control.Required) element.setAttribute("data-required", "true");
+      if (
+        control.LockContents ||
+        !["PlainText", "RichText"].includes(control.Kind) ||
+        control.ShowingPlaceholder
+      )
+        element.contentEditable = "false";
+    }
     if (
       [
         "Figure",

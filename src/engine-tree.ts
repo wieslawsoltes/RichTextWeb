@@ -175,11 +175,20 @@ export function deleteRange(
   end: number,
 ): void {
   if (end <= start) return;
+  const control = inlineControlAt(root, start, end);
+  if (control && (start > control.start || end < control.end)) {
+    const nested = makeNode("FlowDocument", [
+      makeNode("Paragraph", control.node.children ?? []),
+    ]);
+    deleteRange(nested, start - control.start, end - control.start);
+    control.node.children = nested.children![0].children;
+    return;
+  }
   const single = leaves(root).find(
     (leaf) =>
       leaf.node.type === "Run" && start >= leaf.start && end <= leaf.end,
   );
-  if (single) {
+  if (single && !single.props.ContentControl) {
     const value = single.node.text ?? "";
     single.node.text =
       value.slice(0, start - single.start) + value.slice(end - single.start);
@@ -232,13 +241,67 @@ export function deleteRange(
     }
   }
 }
-/** A field edge belongs to surrounding text, not to the cached result inside the field. */
+function inlineControlAt(
+  root: DocumentNode,
+  from: number,
+  to = from,
+): { node: DocumentNode; start: number; end: number } | undefined {
+  const block = pointBlock(root, from);
+  let found: { node: DocumentNode; start: number; end: number } | undefined;
+  const visit = (node: DocumentNode, start: number) => {
+    const end = start + inlineText(node).length;
+    if (from < start || to > end) return;
+    if (
+      node.type === "Span" &&
+      node.props.ContentControl &&
+      (from !== to || (from > start && from < end))
+    )
+      found = { node, start, end };
+    if (
+      ["Figure", "Floater", "InlineUIContainer", "Equation", "Image"].includes(
+        node.type,
+      )
+    )
+      return;
+    for (const child of node.children ?? []) {
+      visit(child, start);
+      start += inlineText(child).length;
+    }
+  };
+  visit(block.node, block.start);
+  return found;
+}
+export function replaceInlineControlText(
+  root: DocumentNode,
+  start: number,
+  end: number,
+  text: string,
+  props: Record<string, any>,
+): boolean {
+  const control = inlineControlAt(root, start, end);
+  if (!control || (start === control.start && end === control.end))
+    return false;
+  if (text.includes("\n") || text.includes("\r"))
+    throw new Error("Use a block rich-text control for paragraph breaks.");
+  const nested = makeNode("FlowDocument", [
+    makeNode("Paragraph", control.node.children ?? []),
+  ]);
+  deleteRange(nested, start - control.start, end - control.start);
+  if (text) insertText(nested, start - control.start, text, props);
+  control.node.children = nested.children![0].children;
+  return true;
+}
+/** A field/control edge belongs to surrounding text, not to the managed result. */
 function isFieldBoundary(root: DocumentNode, offset: number): boolean {
   const block = pointBlock(root, offset);
   const visit = (node: DocumentNode, start: number): boolean => {
     const end = start + inlineText(node).length;
     if (offset < start || offset > end) return false;
-    if (node.props.Field && (offset === start || offset === end)) return true;
+    if (
+      (node.props.Field || node.props.ContentControl) &&
+      (offset === start || offset === end)
+    )
+      return true;
     if (
       ["Equation", "Image", "InlineUIContainer", "Figure", "Floater"].includes(
         node.type,
@@ -275,6 +338,17 @@ export function insertText(
   text: string,
   props: Record<string, any>,
 ): number {
+  const control = inlineControlAt(root, offset);
+  if (control) {
+    if (text.includes("\n") || text.includes("\r"))
+      throw new Error("Use a block rich-text control for paragraph breaks.");
+    const nested = makeNode("FlowDocument", [
+      makeNode("Paragraph", control.node.children ?? []),
+    ]);
+    insertText(nested, offset - control.start, text, props);
+    control.node.children = nested.children![0].children;
+    return offset + text.length;
+  }
   if (!text.includes("\n") && !text.includes("\r")) {
     const list = leaves(root),
       leaf =
@@ -287,7 +361,10 @@ export function insertText(
         list.find((item) => item.node.type === "Run" && item.start === offset);
     if (
       leaf &&
-      !(leaf.props.Field && isFieldBoundary(root, offset)) &&
+      !(
+        (leaf.props.Field || leaf.props.ContentControl) &&
+        isFieldBoundary(root, offset)
+      ) &&
       Object.entries(props).every(
         ([name, value]) =>
           JSON.stringify(leaf.props[name]) === JSON.stringify(value),

@@ -1,3 +1,4 @@
+import { runContentControlBrowserChecks } from "../tests/content-controls.browser.mjs";
 import { runWordAuthoringBrowserChecks } from "../tests/word-authoring.browser.mjs";
 import { runPageAuthoringBrowserChecks } from "../tests/page-authoring.browser.mjs";
 import { chromium } from "playwright";
@@ -233,6 +234,7 @@ try {
     path: "test-results/studio-desktop.png",
     fullPage: true,
   });
+  results.push(...(await runContentControlBrowserChecks(page)));
   assert.deepEqual(errors, []);
   results.push("No uncaught browser errors");
   await writeFile(
