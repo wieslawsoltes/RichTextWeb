@@ -538,15 +538,17 @@ export function updateDocumentFields(
           value = sequenceValues.get(node);
           break;
         case "IF": {
-          if (code.Arguments.length !== 5)
+          if (code.Arguments.length < 4 || code.Arguments.length > 5)
             throw new SyntaxError(
-              "IF requires left, operator, right, true text and false text; nested fields are not supported.",
+              "IF requires left, operator, right, true text and optional false text; nested fields are not supported.",
             );
           const operand = (index: number) => {
-            const source = code.Arguments[index]!;
+            const source = code.Arguments[index]!,
+              mark = code.Quoted[index] ? undefined : bookmark(source);
             return code.Quoted[index]
               ? source
               : (parseFieldNumber(source) ??
+                  (mark ? bookmarkText(mark) : undefined) ??
                   own(context.Data, source) ??
                   variable(source) ??
                   source);
@@ -572,7 +574,7 @@ export function updateDocumentFields(
           const operator = code.Arguments[1]!;
           if (!Object.hasOwn(comparisons, operator))
             throw new SyntaxError("Unsupported IF comparison operator.");
-          value = code.Arguments[comparisons[operator] ? 3 : 4];
+          value = code.Arguments[comparisons[operator] ? 3 : 4] ?? "";
           break;
         }
         case "REF":

@@ -61,6 +61,24 @@ export async function runWordAuthoringBrowserChecks(page) {
     );
 
     await page.evaluate(() => {
+      const editor = richTextStudio.editor;
+      const offset = editor.Document.Text.indexOf("\n2\n75\n") + 1;
+      if (offset <= 0) throw new Error("Automation quantity cell not found.");
+      editor.Select(offset, offset + 1);
+      editor.Engine.InsertText("4");
+      editor.Focus();
+    });
+    await page.keyboard.press("F9");
+    assert.match(await text(), /Linked total: 570\.00/);
+    assert.match(await text(), /Budget: 500\.00\. Approval: Review estimate/);
+    await page.evaluate(() => richTextStudio.editor.Undo());
+    assert.match(await text(), /Linked total: 420\.00/);
+    assert.match(await text(), /Approval: Within budget/);
+    results.push(
+      "Automation quantity edits update totals, linked references and IF approval together with one undo",
+    );
+
+    await page.evaluate(() => {
       const { RT, editor } = richTextStudio;
       editor.Document = RT.fromHTML(
         "<table><tr><td>100</td></tr><tr><td>2</td></tr><tr><td>RESULT</td></tr></table>",
