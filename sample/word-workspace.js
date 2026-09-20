@@ -69,6 +69,7 @@ const passive = new Set([
   "PagePreview",
   "WordCount",
   "FormData",
+  "DocumentStyles",
   "ValidateForm",
   "ReviewChanges",
   "Copy",
@@ -477,7 +478,18 @@ export function createWordWorkspace(hooks) {
   };
   q("catalog-apply-style").onclick = () => {
     const item = selected();
-    if (item) configuration.ApplyStyle(item.Style);
+    if (item && !editor.IsReadOnly) {
+      if (item.NamedStyle) {
+        const definition = editor.Engine.GetDocumentStyles().find(
+          (s) => s.Id === item.NamedStyle,
+        );
+        if (definition?.Kind === "Character")
+          editor.Engine.ApplyCharacterStyle(definition.Id);
+        else if (definition) editor.Engine.ApplyParagraphStyle(definition.Id);
+        editor.Focus();
+        Refresh();
+      } else configuration.ApplyStyle(item.Style);
+    }
   };
   q("catalog-accept").onclick = () => {
     const item = selected();
@@ -654,6 +666,17 @@ export function createWordWorkspace(hooks) {
         Kind: "Paragraph style",
         Detail: "Apply to selected paragraphs",
         Order: index,
+      });
+    for (const style of editor.Engine.GetDocumentStyles())
+      next.push({
+        Id: `named-style-${style.Id}`,
+        Name: style.Name,
+        NamedStyle: style.Id,
+        Style: style.Id,
+        Category: "styles",
+        Kind: `${style.Kind} style`,
+        Detail: `Based on: ${style.BasedOn ?? "none"}${style.IsDefault ? " · Default" : ""}`,
+        Order: next.length,
       });
     const previous = new Set(recordById.keys());
     rows.edit((cache) => {

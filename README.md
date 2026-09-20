@@ -25,6 +25,12 @@ The reusable toolbar adds insertion, properties, value editing, isolated rich dr
 
 This does not implement every Word form feature or a security boundary: picture/repeating/building-block controls, custom XML binding, legacy forms and restricted-editing permissions remain. Required/maximum-length rules are local application metadata. Source/package versions are unchanged.
 
+## Named document styles — source, unreleased
+
+The shared engine now supports named paragraph and character styles, based-on/default/following-paragraph roles, live definition updates, direct-format preservation, selection-based creation/update and safe deletion with replacement. The toolbar has a reusable style manager; Document Studio's Home ribbon, preset gallery and document catalog use the same APIs. Choose **Named document styles** to exercise the live sample.
+
+Supported native DOCX style definitions/references remain editable without the private extension. Style-only external edits invalidate stale private snapshots. Named headings feed outline/contents generation; story drafts share definitions and reject conflicting catalog changes. [API examples and explicit limits](docs/DOCUMENT-STYLES.md) · [Full capability audit](docs/WORD-FEATURE-AUDIT.md). This is a supported paragraph/character subset, not complete Word themes, table/list/linked styles or native typography parity. Version remains 0.5.0; no new package publication is implied.
+
 ## Word authoring extension — source, unreleased
 
 The core engine and reusable controls now include bounded table formulas with 18 functions and table/range dependencies; stable three-key rich table sorting; repeat-header authoring; numbered captions, bookmark cross-references and tables of figures/tables; expanded native fields, field editing/locking/unlinking, document properties/variables and Unicode word/selection statistics. Native DOCX tests exercise these without relying on the private RichTextWeb extension. Field cache loss, embedded-object offsets and typing at field/caption boundaries are also fixed.

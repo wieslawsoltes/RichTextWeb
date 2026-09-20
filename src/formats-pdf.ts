@@ -1,3 +1,4 @@
+import { materializeDocumentStyles } from "./document-styles.js";
 import {
   renderEquation,
   equationOptions,
@@ -340,7 +341,7 @@ export async function toPDF(
   document: FlowDocument,
   options: PDFExportOptions = {},
 ): Promise<Uint8Array> {
-  const source = document.ToJSON();
+  const source = materializeDocumentStyles(document.ToJSON());
   const props = source.props ?? {};
   const width = positive(
     options.pageWidth ?? finite(props.PageWidth, 794) * PIXEL,

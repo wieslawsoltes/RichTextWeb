@@ -1,3 +1,4 @@
+import { nodeStyleProperties } from "./document-styles.js";
 import {
   parseFieldCode,
   parseFieldNumber,
@@ -1129,7 +1130,11 @@ export class DocumentFeatures {
     entries.push(retain(title.ToJSON(), "@title"));
     const collect = (node: DocumentNode) => {
       if (node.props.TableOfContents) return;
-      const level = Number(node.props.HeadingLevel);
+      const level = Number(
+        node.props.HeadingLevel ??
+          nodeStyleProperties(node.type, node.props, root.props.DocumentStyles)
+            .HeadingLevel,
+      );
       if (
         node.type === "Paragraph" &&
         (options.CaptionLabel

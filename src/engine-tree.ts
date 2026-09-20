@@ -1,3 +1,4 @@
+import { nodeStyleProperties } from "./document-styles.js";
 import type { DocumentNode } from "./model.js";
 
 /** Internal immutable-tree helpers. Public offsets count UTF-16 code units. */
@@ -92,7 +93,16 @@ export function effectiveProps(
         : node.type === "Underline"
           ? { TextDecorations: "Underline" }
           : {};
-  return { ...inherited, ...semantic, ...node.props };
+  return {
+    ...inherited,
+    ...nodeStyleProperties(
+      node.type,
+      node.props,
+      inherited.DocumentStyles ?? node.props.DocumentStyles,
+    ),
+    ...semantic,
+    ...node.props,
+  };
 }
 export function leaves(root: DocumentNode): TextLeaf[] {
   const result: TextLeaf[] = [];

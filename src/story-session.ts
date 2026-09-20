@@ -16,6 +16,7 @@ export class DocumentStorySession {
   readonly Kind: StoryKind;
   private readonly parent: FlowDocument;
   private readonly original: string;
+  private readonly originalStyles: string;
   private closed = false;
   constructor(
     private readonly owner: RichTextEngine,
@@ -32,6 +33,7 @@ export class DocumentStorySession {
     const root = new FlowDocument().ToJSON();
     // Font properties are inherited from the main document without copying its page stories/review metadata.
     const properties = this.parent.ToJSON().props;
+    this.originalStyles = JSON.stringify(properties.DocumentStyles ?? []);
     for (const name of [
       "FontFamily",
       "FontSize",
@@ -40,6 +42,7 @@ export class DocumentStorySession {
       "Foreground",
       "FlowDirection",
       "Language",
+      "DocumentStyles",
     ])
       if (properties[name] !== undefined) root.props[name] = properties[name];
     root.children = structuredClone(Array.isArray(content) ? content : []);
@@ -55,7 +58,10 @@ export class DocumentStorySession {
     if (this.closed || this.owner.Document !== this.parent) return true;
     try {
       return (
-        JSON.stringify(this.target().props[this.Kind] ?? null) !== this.original
+        JSON.stringify(this.target().props[this.Kind] ?? null) !==
+          this.original ||
+        JSON.stringify(this.parent.GetValue("DocumentStyles") ?? []) !==
+          this.originalStyles
       );
     } catch {
       return true;
@@ -66,6 +72,13 @@ export class DocumentStorySession {
     if (this.HasConflict)
       throw new Error(
         "The target story changed or was removed; reopen it before applying.",
+      );
+    if (
+      JSON.stringify(this.Document.GetValue("DocumentStyles") ?? []) !==
+      this.originalStyles
+    )
+      throw new Error(
+        "Edit shared style definitions in the parent document, then reopen this story. Applying existing styles is supported in the draft.",
       );
     const children = this.Document.ToJSON().children ?? [];
     const changed =

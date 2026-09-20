@@ -1,4 +1,13 @@
 import {
+  validateDocumentStyles,
+  resolveDocumentStyle,
+  visitStyledNodes,
+  characterStyleProperties,
+  paragraphStyleProperties,
+  type DocumentStyle,
+  type DocumentStyleKind,
+} from "./document-styles.js";
+import {
   collectContentControlNodes,
   contentControlValue,
   createContentControl,
@@ -1123,7 +1132,21 @@ export class RichTextEngine {
     this.InsertText(text);
   }
   InsertParagraph(): void {
-    this.InsertText("\n");
+    const paragraph = this.Selection.Start.Paragraph;
+    const styles = this.GetDocumentStyles();
+    const current =
+      styles.find((s) => s.Id === paragraph?.GetValue("ParagraphStyleId")) ??
+      styles.find((s) => s.IsDefault);
+    const block = textBlocks(this.Document.ToJSON()).find(
+      (b) => b.node.id === paragraph?.Id,
+    );
+    if (current?.Next && this.start === this.end && block?.end === this.start) {
+      this.Change(() => {
+        this.InsertText("\n");
+        this.ApplyParagraphStyle(current.Next!);
+        this.ResetInsertionFormatting();
+      });
+    } else this.InsertText("\n");
   }
   DeleteBackward(): void {
     this.deleteDirection(-1, false);
@@ -1211,13 +1234,280 @@ export class RichTextEngine {
     const leaf =
       list.find((item) => item.start < this.start && item.end >= this.start) ??
       list.find((item) => item.start === this.start);
-    const inherited = leaf?.props ?? this.Document.ToJSON().props;
+    let inherited = leaf?.props ?? this.Document.ToJSON().props;
+    if (this.Document.GetValue("DocumentStyles")?.length) {
+      // Carry only explicit inline formatting and style identity, not derived style values.
+      const find = (
+        node: DocumentNode,
+        parent: Record<string, any>,
+      ): Record<string, any> | undefined => {
+        const props =
+          node.type === "Paragraph" ? {} : { ...parent, ...node.props };
+        if (node.id === leaf?.node.id) return props;
+        for (const child of node.children ?? []) {
+          const found = find(child, props);
+          if (found) return found;
+        }
+        return undefined;
+      };
+      inherited = find(this.Document.ToJSON(), {}) ?? {};
+      if (
+        Object.prototype.hasOwnProperty.call(this.typing, "CharacterStyleId")
+      ) {
+        // A deliberately selected typing style starts a new run, rather than freezing old direct values.
+        inherited = {};
+      }
+    }
     return Object.fromEntries(
-      Object.entries({ ...inherited, ...this.typing }).filter(([key]) =>
-        INLINE_PROPERTIES.has(key),
+      Object.entries({ ...inherited, ...this.typing }).filter(
+        ([key]) => INLINE_PROPERTIES.has(key) || key === "CharacterStyleId",
       ),
     );
   }
+  /** Detached style catalog; direct formatting remains outside these definitions. */
+  GetDocumentStyles(): DocumentStyle[] {
+    this.assertLive();
+    return validateDocumentStyles(
+      this.Document.GetValue("DocumentStyles") ?? [],
+    );
+  }
+  SetDocumentStyles(styles: DocumentStyle[]): void {
+    const validated = validateDocumentStyles(styles);
+    const byId = new Map(validated.map((s) => [s.Id, s]));
+    this.mutate(
+      (root) => {
+        visitStyledNodes(root, (node) => {
+          for (const [key, kind] of [
+            ["ParagraphStyleId", "Paragraph"],
+            ["CharacterStyleId", "Character"],
+          ])
+            if (node.props[key] && byId.get(node.props[key])?.Kind !== kind)
+              throw new Error(
+                `Style ${node.props[key]} is still referenced or has an incompatible kind.`,
+              );
+        });
+        root.props.DocumentStyles = validated;
+      },
+      false,
+      undefined,
+      { Kind: "Formatting", Operation: "SetDocumentStyles" },
+    );
+  }
+  SetDocumentStyle(style: DocumentStyle): void {
+    const styles = this.GetDocumentStyles(),
+      index = styles.findIndex((s) => s.Id === style.Id);
+    if (index < 0) styles.push(style);
+    else styles[index] = style;
+    this.SetDocumentStyles(styles);
+  }
+  ResolveDocumentStyle(id: string): Record<string, any> {
+    return resolveDocumentStyle(this.GetDocumentStyles(), id);
+  }
+  RemoveDocumentStyle(id: string, replacement?: string): void {
+    const styles = this.GetDocumentStyles(),
+      removed = styles.find((s) => s.Id === id);
+    if (!removed) throw new Error(`Document style ${id} was not found.`);
+    if (
+      replacement === id ||
+      (replacement &&
+        styles.find((s) => s.Id === replacement)?.Kind !== removed.Kind)
+    )
+      throw new Error(
+        "A replacement style must be a different style of the same kind.",
+      );
+    this.mutate(
+      (root) => {
+        const next = styles.filter((s) => s.Id !== id);
+        visitStyledNodes(root, (node) => {
+          if (
+            removed.IsDefault &&
+            !replacement &&
+            node.type === "Paragraph" &&
+            !node.props.ParagraphStyleId
+          )
+            throw new Error(
+              "The default style is still used. Choose a replacement style.",
+            );
+          for (const key of ["ParagraphStyleId", "CharacterStyleId"])
+            if (node.props[key] === id) {
+              if (!replacement)
+                throw new Error(
+                  "The style is still used. Choose a replacement style.",
+                );
+              node.props[key] = replacement;
+            }
+        });
+        for (const style of next)
+          for (const key of ["BasedOn", "Next"] as const)
+            if (style[key] === id) {
+              if (!replacement)
+                throw new Error("The style is still used by another style.");
+              style[key] = replacement;
+            }
+        if (removed.IsDefault && replacement)
+          next.find((s) => s.Id === replacement)!.IsDefault = true;
+        root.props.DocumentStyles = validateDocumentStyles(next);
+      },
+      false,
+      undefined,
+      { Kind: "Formatting", Operation: "RemoveDocumentStyle" },
+    );
+  }
+  ApplyParagraphStyle(id: string | null, clearDirectFormatting = false): void {
+    if (
+      id !== null &&
+      this.GetDocumentStyles().find((s) => s.Id === id)?.Kind !== "Paragraph"
+    )
+      throw new Error("Choose an existing paragraph style.");
+    this.mutate(
+      (root) => {
+        for (const block of this.selectedBlocks(root)) {
+          if (block.node.type !== "Paragraph") continue;
+          if (clearDirectFormatting)
+            for (const key of paragraphStyleProperties)
+              delete block.node.props[key];
+          if (id === null) delete block.node.props.ParagraphStyleId;
+          else block.node.props.ParagraphStyleId = id;
+        }
+      },
+      false,
+      undefined,
+      { Kind: "Formatting", Operation: "ApplyParagraphStyle" },
+    );
+  }
+  ApplyCharacterStyle(id: string | null, clearDirectFormatting = false): void {
+    if (
+      id !== null &&
+      this.GetDocumentStyles().find((s) => s.Id === id)?.Kind !== "Character"
+    )
+      throw new Error("Choose an existing character style.");
+    if (this.start === this.end) {
+      if (clearDirectFormatting) this.typing = {};
+      this.typing.CharacterStyleId = id ?? "";
+      this.emitSelection();
+      return;
+    }
+    this.editSelectedStyleInlines((node) => {
+      delete node.props.CharacterStyleId;
+      if (clearDirectFormatting)
+        for (const key of characterStyleProperties) delete node.props[key];
+      if (
+        clearDirectFormatting &&
+        ["Bold", "Italic", "Underline"].includes(node.type)
+      )
+        node.type = "Span";
+      if (id && ["Run", "LineBreak", "Image", "Equation"].includes(node.type))
+        node.props.CharacterStyleId = id;
+    }, "ApplyCharacterStyle");
+  }
+  /** Clear character-level direct values, retaining paragraph and character style identities. */
+  ClearDirectFormatting(): void {
+    if (this.start === this.end) {
+      const style = this.GetProperty("CharacterStyleId");
+      this.typing =
+        typeof style === "string" ? { CharacterStyleId: style } : {};
+      this.emitSelection();
+      return;
+    }
+    this.editSelectedStyleInlines((node) => {
+      for (const key of characterStyleProperties) delete node.props[key];
+      if (["Bold", "Italic", "Underline"].includes(node.type))
+        node.type = "Span";
+    }, "ClearDirectFormatting");
+  }
+  private editSelectedStyleInlines(
+    edit: (node: DocumentNode) => void,
+    operation: string,
+  ): void {
+    this.mutate(
+      (root) => {
+        const visit = (node: DocumentNode) => {
+          edit(node);
+          if (
+            ![
+              "Figure",
+              "Floater",
+              "InlineUIContainer",
+              "Equation",
+              "Image",
+            ].includes(node.type)
+          )
+            node.children?.forEach(visit);
+        };
+        for (const block of this.selectedBlocks(root)) {
+          if (block.node.type !== "Paragraph") continue;
+          const from = Math.max(0, this.start - block.start),
+            to = Math.min(block.text.length, this.end - block.start);
+          const middle = sliceInlines(
+            block.node.children ?? [],
+            from,
+            to,
+            from > 0,
+          );
+          middle.forEach(visit);
+          block.node.children = [
+            ...sliceInlines(block.node.children ?? [], 0, from),
+            ...middle,
+            ...sliceInlines(
+              block.node.children ?? [],
+              to,
+              block.text.length,
+              true,
+            ),
+          ];
+        }
+      },
+      true,
+      undefined,
+      { Kind: "Formatting", Operation: operation },
+    );
+  }
+  CreateDocumentStyleFromSelection(
+    id: string,
+    name: string,
+    kind: DocumentStyleKind,
+  ): void {
+    if (this.GetDocumentStyles().some((s) => s.Id === id))
+      throw new Error("A style with this identifier already exists.");
+    this.SetDocumentStyle({
+      Id: id,
+      Name: name,
+      Kind: kind,
+      Properties: this.stylePropertiesFromSelection(kind),
+    });
+  }
+  UpdateDocumentStyleFromSelection(id: string): void {
+    const style = this.GetDocumentStyles().find((s) => s.Id === id);
+    if (!style) throw new Error("The selected document style was not found.");
+    this.SetDocumentStyle({
+      ...style,
+      Properties: this.stylePropertiesFromSelection(style.Kind),
+    });
+  }
+  private stylePropertiesFromSelection(
+    kind: DocumentStyleKind,
+  ): Record<string, any> {
+    const properties: Record<string, any> = {};
+    const paragraph = this.Selection.Start.Paragraph;
+    for (const key of kind === "Paragraph"
+      ? paragraphStyleProperties
+      : characterStyleProperties) {
+      // The model's automatic line-height sentinel is not an explicit pixel size.
+      if (
+        key === "LineHeight" &&
+        paragraph?.GetValueSource(key).BaseValueSource === "Default"
+      )
+        continue;
+      const value =
+        kind === "Paragraph" &&
+        !(characterStyleProperties as readonly string[]).includes(key)
+          ? paragraph?.GetValue(key)
+          : this.GetProperty(key);
+      if (value !== undefined && value !== null) properties[key] = value;
+    }
+    return properties;
+  }
+
   GetProperty(name: string): unknown {
     return this.start === this.end && name in this.typing
       ? this.typing[name]
@@ -1226,7 +1516,8 @@ export class RichTextEngine {
           this.start,
           this.end,
           name,
-          this.Document.GetValue(name),
+          this.Selection.Start.Paragraph?.GetValue(name) ??
+            this.Document.GetValue(name),
         );
   }
   private formatMutation(
@@ -2005,11 +2296,13 @@ export class RichTextEngine {
       FlowDocument.FromJSON(
         makeNode("FlowDocument", clone(target.children ?? []), {
           ...Object.fromEntries(
-            Object.entries(target.props).filter(([key]) =>
-              INLINE_PROPERTIES.has(key),
+            Object.entries(target.props).filter(
+              ([key]) =>
+                INLINE_PROPERTIES.has(key) || key === "CharacterStyleId",
             ),
           ),
           Annotations: clone(target.props.StoryAnnotations ?? []),
+          DocumentStyles: this.GetDocumentStyles(),
         }),
       ),
     );
@@ -2020,6 +2313,13 @@ export class RichTextEngine {
           "EditFloatingContent requires a synchronous action; prepare asynchronous content before opening the transaction.",
         );
       const next = story.Document.ToJSON();
+      if (
+        JSON.stringify(next.props.DocumentStyles ?? []) !==
+        JSON.stringify(this.GetDocumentStyles())
+      )
+        throw new Error(
+          "Edit shared style definitions in the parent document, not in a floating story draft.",
+        );
       this.mutate(
         (root) => {
           const node = findNode(root, id)!;
@@ -2613,6 +2913,27 @@ export class RichTextEngine {
       .replace(/[\s_-]/g, "")
       .toLowerCase();
     switch (name) {
+      case "updatedocumentstylefromselection":
+        return this.UpdateDocumentStyleFromSelection(String(parameter));
+      case "getdocumentstyles":
+        return this.GetDocumentStyles();
+      case "resolvedocumentstyle":
+        return this.ResolveDocumentStyle(parameter);
+      case "setdocumentstyle":
+        return this.SetDocumentStyle(parameter);
+      case "setdocumentstyles":
+        return this.SetDocumentStyles(parameter);
+      case "applyparagraphstyle":
+        return this.ApplyParagraphStyle(parameter);
+      case "applycharacterstyle":
+        return this.ApplyCharacterStyle(parameter);
+      case "removedocumentstyle":
+        return this.RemoveDocumentStyle(
+          parameter?.Id ?? parameter,
+          parameter?.Replacement,
+        );
+      case "cleardirectformatting":
+        return this.ClearDirectFormatting();
       case "undo":
         return this.Undo();
       case "redo":

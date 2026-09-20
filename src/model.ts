@@ -1,3 +1,7 @@
+import {
+  nodeStyleProperties,
+  validateDocumentStyles,
+} from "./document-styles.js";
 /** Portable FlowDocument object model. Positions are UTF-16 plain-text offsets. */
 export type PropertyValue = any;
 export interface DocumentNode {
@@ -777,6 +781,13 @@ export class DependencyPropertyHelper {
   }
 }
 export class DependencyObject {
+  private namedStyleContext: unknown;
+  protected get NamedStyleContext(): unknown {
+    return undefined;
+  }
+  protected NamedStyleValue(_name: string): any {
+    return DependencyProperty.UnsetValue;
+  }
   protected values: Record<string, any> = {};
   private currentValues = new Map<string, any>();
   private styleValues = new Map<string, any>();
@@ -826,6 +837,11 @@ export class DependencyObject {
     property: string | DependencyProperty,
   ): EffectivePropertyValue {
     const { key, definition, metadata } = this.resolve(property);
+    const context = this.NamedStyleContext;
+    if (context !== this.namedStyleContext) {
+      this.effectiveValues.clear();
+      this.namedStyleContext = context;
+    }
     const cached = this.effectiveValues.get(key);
     if (cached) return cached;
     if (this.evaluating.has(key))
@@ -833,6 +849,7 @@ export class DependencyObject {
     this.evaluating.add(key);
     try {
       let value: any, source: EffectivePropertyValue["source"];
+      const named = this.NamedStyleValue(key);
       if (Object.prototype.hasOwnProperty.call(this.values, key)) {
         value = this.values[key];
         source = "Local";
@@ -841,6 +858,9 @@ export class DependencyObject {
         source = "StyleTrigger";
       } else if (this.styleValues.has(key)) {
         value = this.styleValues.get(key);
+        source = "Style";
+      } else if (named !== DependencyProperty.UnsetValue) {
+        value = named;
         source = "Style";
       } else if (metadata.Inherits && this.InheritanceParent) {
         const parent = this.InheritanceParent.evaluate(property);
@@ -920,6 +940,7 @@ export class DependencyObject {
       )
     )
       throw new RangeError("HeadingLevel must be between 0 and 6.");
+    if (name === "DocumentStyles") validateDocumentStyles(value);
     cloneValue(value);
   }
   private writable(
@@ -1313,6 +1334,30 @@ export interface CollectionChangedEvent<T> {
 
 export class TextElement extends DependencyObject {
   readonly Type: string;
+  private namedValuesContext: unknown;
+  private namedValues: Record<string, any> = {};
+  protected override get NamedStyleContext(): unknown {
+    const doc = this.Document;
+    return doc?.values.DocumentStyles?.length
+      ? doc._namedStyleContext
+      : undefined;
+  }
+  protected override NamedStyleValue(name: string): any {
+    const doc = this.Document;
+    if (!doc?.values.DocumentStyles?.length)
+      return DependencyProperty.UnsetValue;
+    if (this.namedValuesContext !== doc._namedStyleContext) {
+      this.namedValues = nodeStyleProperties(
+        this.Type,
+        this.values,
+        doc.values.DocumentStyles,
+      );
+      this.namedValuesContext = doc._namedStyleContext;
+    }
+    return Object.prototype.hasOwnProperty.call(this.namedValues, name)
+      ? this.namedValues[name]
+      : DependencyProperty.UnsetValue;
+  }
   private identity = createId();
   private parent: TextElement | null = null;
   /** Internal ownership slots; a node belongs to exactly one collection. */
@@ -3044,7 +3089,16 @@ export class FlowDocument extends TextElement {
       this.EndChange();
     }
   }
+  /** @internal Invalidates only derived named style caches; direct/transient property layers survive. */
+  _namedStyleContext: object = {};
   /** @internal */ _record(change: DocumentChange): void {
+    if (
+      ["insert", "remove", "reset"].includes(change.Kind) ||
+      ["DocumentStyles", "ParagraphStyleId", "CharacterStyleId"].includes(
+        change.Property ?? "",
+      )
+    )
+      this._namedStyleContext = {};
     if (change.Kind !== "property") this.pointerDirty = true;
     this.pending.push(change);
     if (!this.changeDepth) this.flush();

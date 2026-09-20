@@ -1,5 +1,11 @@
 # Verification and measured performance
 
+## Named styles continuation (source, unreleased)
+
+Based on the 576-test forms merge `ada9116`, the named-style increment adds 54 Node regressions (630 total) and eight Chromium groups (141 full-suite groups). Local typecheck, library/demo builds and Node tests pass. Local browser navigation is blocked with `ERR_BLOCKED_BY_ADMINISTRATOR`; the feature PR's normal Node 22/24, installed-consumer, native Windows and Blazor CI must qualify the exact committed source. Test presence is not an executed browser pass. No new package version or Word desktop visual/open-save verification is claimed.
+
+New checks cover inheritance/defaults/next styles, direct overrides, typing, bounds, atomic mutation/undo/review, native XML without private metadata, external styles-only changes, import warnings, story conflicts and sequential collaboration. Browser groups exercise the reusable manager, rendering, mobile dialogs, read-only/stale guards and the actual Home-ribbon sample. Details: [DOCUMENT-STYLES.md](DOCUMENT-STYLES.md).
+
 ## Release 0.5.0 qualification
 
 [PR #19](https://github.com/wieslawsoltes/RichTextWeb/pull/19) passed **404 unit tests and 112 Chromium groups** on Node 22/24 in [CI run 34882583486](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34882583486). The run also passed installed-package checks, the shared C# protocol suite and real WPF/WinUI/Avalonia Windows applications. [Blazor run 34882583978](https://github.com/wieslawsoltes/RichTextWeb/actions/runs/34882583978) passed .NET 8/10 WebAssembly and Server package consumers.

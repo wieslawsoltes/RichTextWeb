@@ -1,3 +1,4 @@
+import { executeDocumentStyleCommand } from "./document-style-ui.js";
 import { executeContentControlCommand } from "./content-control-ui.js";
 import type { TableSortOptions } from "./table-grid.js";
 import type { CaptionOptions } from "./document-features.js";
@@ -30,6 +31,9 @@ interface Tool {
   title?: string;
 }
 const home: Tool[] = [
+  { label: "Manage styles", command: "DocumentStyles" },
+  { label: "Style from selection", command: "CreateStyleFromSelection" },
+  { label: "Clear direct formatting", command: "ClearDirectFormatting" },
   { label: "Paste", command: "Paste" },
   { label: "Cut", command: "Cut" },
   { label: "Copy", command: "Copy" },
@@ -375,6 +379,7 @@ export class RichTextToolbar extends HTMLElementBase {
             "WordCount",
             "FormData",
             "ValidateForm",
+            "DocumentStyles",
           ].includes(control.dataset.command ?? "");
         if (control.dataset.command === "Undo")
           control.disabled = locked || !engine?.CanUndo;
@@ -433,6 +438,7 @@ export class RichTextToolbar extends HTMLElementBase {
         "WordCount",
         "FormData",
         "ValidateForm",
+        "DocumentStyles",
       ].includes(command)
     )
       return false;
@@ -445,6 +451,16 @@ export class RichTextToolbar extends HTMLElementBase {
       this.Refresh();
       return result;
     };
+    if (
+      executeDocumentStyleCommand(command, {
+        Editor: editor,
+        IsCurrent: () => this.editor === editor,
+        CreateDialog: () => this.createDialog(),
+        Prompt: (title, fields, submit) => this.prompt(title, fields, submit),
+        Refresh: () => this.Refresh(),
+      })
+    )
+      return true;
     if (
       executeContentControlCommand(command, parameter, {
         Editor: editor,
@@ -1709,6 +1725,9 @@ export class RichTextToolbar extends HTMLElementBase {
     save.textContent = "Apply";
     save.className = "primary";
     const original = JSON.stringify(object.children || []);
+    const originalStyles = JSON.stringify(editor.Engine.GetDocumentStyles());
+    nested.Engine.SetDocumentStyles(editor.Engine.GetDocumentStyles());
+    nested.Engine.ClearUndo();
     save.onclick = () => {
       try {
         if (this.editor !== editor || editor.IsReadOnly)
@@ -1719,6 +1738,14 @@ export class RichTextToolbar extends HTMLElementBase {
         if (!current || JSON.stringify(current.children || []) !== original)
           throw new Error(
             "Text box content changed while this dialog was open; close and reopen to edit the latest content.",
+          );
+        if (
+          JSON.stringify(editor.Engine.GetDocumentStyles()) !==
+            originalStyles ||
+          JSON.stringify(nested.Engine.GetDocumentStyles()) !== originalStyles
+        )
+          throw new Error(
+            "Shared styles changed. Edit their definitions in the parent document and reopen this draft.",
           );
         editor.Engine.EditFloatingContent(object.id, (story) =>
           story.ReplaceDocument(nested.Document),
