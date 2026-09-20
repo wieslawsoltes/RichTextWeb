@@ -808,6 +808,23 @@ export class RichTextBox extends HTMLElementBase {
   GetContentControls() {
     return this.Engine.GetContentControls();
   }
+  GetDocumentTheme() {
+    return this.Engine.GetDocumentTheme();
+  }
+  SetDocumentTheme(
+    theme: import("./document-theme.js").DocumentTheme | null,
+  ): boolean {
+    if (this.IsReadOnly) return false;
+    this.Engine.SetDocumentTheme(theme);
+    this.restoreSelection();
+    return true;
+  }
+  DetachDocumentTheme(): boolean {
+    if (this.IsReadOnly) return false;
+    this.Engine.DetachDocumentTheme();
+    this.restoreSelection();
+    return true;
+  }
   GetSelectedContentControl() {
     return this.Engine.GetSelectedContentControl();
   }
@@ -859,6 +876,7 @@ export class RichTextBox extends HTMLElementBase {
         "getcontentcontrols",
         "getformdata",
         "getdocumentstyles",
+        "getdocumenttheme",
         "resolvedocumentstyle",
         "validateform",
         "selectcontentcontrol",
@@ -2902,7 +2920,10 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       const document: DocumentNode = {
         type: "FlowDocument",
         id: `page-${kind}`,
-        props: { DocumentStyles: props.DocumentStyles },
+        props: {
+          DocumentStyles: props.DocumentStyles,
+          DocumentTheme: props.DocumentTheme,
+        },
         children: blocks.map(resolveFields),
       };
       reconcileDocumentDOM(

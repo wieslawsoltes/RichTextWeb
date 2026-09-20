@@ -385,6 +385,8 @@ export function executeContentControlCommand(
                 },
               ],
       });
+  const originalTheme = JSON.stringify(engine.GetDocumentTheme());
+  nested.Engine.SetDocumentTheme(engine.GetDocumentTheme());
   const originalStyles = JSON.stringify(engine.GetDocumentStyles());
   nested.Engine.SetDocumentStyles(engine.GetDocumentStyles());
   nested.Engine.ClearUndo();
@@ -416,7 +418,9 @@ export function executeContentControlCommand(
       guard(info);
       if (
         JSON.stringify(engine.GetDocumentStyles()) !== originalStyles ||
-        JSON.stringify(nested.Engine.GetDocumentStyles()) !== originalStyles
+        JSON.stringify(nested.Engine.GetDocumentStyles()) !== originalStyles ||
+        JSON.stringify(engine.GetDocumentTheme()) !== originalTheme ||
+        JSON.stringify(nested.Engine.GetDocumentTheme()) !== originalTheme
       )
         throw new Error(
           "Shared styles changed. Edit their definitions in the parent document and reopen this draft.",

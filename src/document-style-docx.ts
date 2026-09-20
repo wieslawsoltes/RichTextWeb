@@ -146,15 +146,6 @@ export function readDocumentStyles(
         "Unsupported decoration omitted; other supported setters retained.",
       );
     }
-    if (
-      Object.keys(child(r, "w:rFonts")?.attrs ?? {}).some((k) =>
-        /Theme$/.test(k),
-      ) ||
-      Object.keys(child(r, "w:color")?.attrs ?? {}).some((k) =>
-        /theme/i.test(k),
-      )
-    )
-      warn(id, "Theme font/color indirection is not resolved.");
     for (const [key, tag, on] of [
       ["FontWeight", "b", "Bold"],
       ["FontStyle", "i", "Italic"],

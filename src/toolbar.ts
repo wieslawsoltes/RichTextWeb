@@ -1,3 +1,4 @@
+import { executeDocumentThemeCommand } from "./document-theme-ui.js";
 import { executeDocumentStyleCommand } from "./document-style-ui.js";
 import { executeContentControlCommand } from "./content-control-ui.js";
 import type { TableSortOptions } from "./table-grid.js";
@@ -31,6 +32,9 @@ interface Tool {
   title?: string;
 }
 const home: Tool[] = [
+  { label: "Document theme", command: "DocumentTheme" },
+  { label: "Theme color", command: "ThemeColor" },
+  { label: "Theme font", command: "ThemeFont" },
   { label: "Manage styles", command: "DocumentStyles" },
   { label: "Style from selection", command: "CreateStyleFromSelection" },
   { label: "Clear direct formatting", command: "ClearDirectFormatting" },
@@ -380,6 +384,7 @@ export class RichTextToolbar extends HTMLElementBase {
             "FormData",
             "ValidateForm",
             "DocumentStyles",
+            "DocumentTheme",
           ].includes(control.dataset.command ?? "");
         if (control.dataset.command === "Undo")
           control.disabled = locked || !engine?.CanUndo;
@@ -439,6 +444,7 @@ export class RichTextToolbar extends HTMLElementBase {
         "FormData",
         "ValidateForm",
         "DocumentStyles",
+        "DocumentTheme",
       ].includes(command)
     )
       return false;
@@ -451,6 +457,16 @@ export class RichTextToolbar extends HTMLElementBase {
       this.Refresh();
       return result;
     };
+    if (
+      executeDocumentThemeCommand(command, {
+        Editor: editor,
+        IsCurrent: () => this.editor === editor,
+        CreateDialog: () => this.createDialog(),
+        Prompt: (title, fields, submit) => this.prompt(title, fields, submit),
+        Refresh: () => this.Refresh(),
+      })
+    )
+      return true;
     if (
       executeDocumentStyleCommand(command, {
         Editor: editor,
@@ -1725,6 +1741,8 @@ export class RichTextToolbar extends HTMLElementBase {
     save.textContent = "Apply";
     save.className = "primary";
     const original = JSON.stringify(object.children || []);
+    const originalTheme = JSON.stringify(editor.Engine.GetDocumentTheme());
+    nested.Engine.SetDocumentTheme(editor.Engine.GetDocumentTheme());
     const originalStyles = JSON.stringify(editor.Engine.GetDocumentStyles());
     nested.Engine.SetDocumentStyles(editor.Engine.GetDocumentStyles());
     nested.Engine.ClearUndo();
@@ -1742,7 +1760,10 @@ export class RichTextToolbar extends HTMLElementBase {
         if (
           JSON.stringify(editor.Engine.GetDocumentStyles()) !==
             originalStyles ||
-          JSON.stringify(nested.Engine.GetDocumentStyles()) !== originalStyles
+          JSON.stringify(nested.Engine.GetDocumentStyles()) !==
+            originalStyles ||
+          JSON.stringify(editor.Engine.GetDocumentTheme()) !== originalTheme ||
+          JSON.stringify(nested.Engine.GetDocumentTheme()) !== originalTheme
         )
           throw new Error(
             "Shared styles changed. Edit their definitions in the parent document and reopen this draft.",

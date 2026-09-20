@@ -1,4 +1,9 @@
 import {
+  resolveThemeValue,
+  validateDocumentTheme,
+  validateThemeProperty,
+} from "./document-theme.js";
+import {
   nodeStyleProperties,
   validateDocumentStyles,
 } from "./document-styles.js";
@@ -785,6 +790,9 @@ export class DependencyObject {
   protected get NamedStyleContext(): unknown {
     return undefined;
   }
+  protected ResolveDocumentValue(_name: string, value: any): any {
+    return value;
+  }
   protected NamedStyleValue(_name: string): any {
     return DependencyProperty.UnsetValue;
   }
@@ -880,6 +888,7 @@ export class DependencyObject {
         source = "Default";
       }
       if (this.currentValues.has(key)) value = this.currentValues.get(key);
+      value = this.ResolveDocumentValue(key, value);
       const base = value;
       if (
         metadata.CoerceValueCallback &&
@@ -941,6 +950,9 @@ export class DependencyObject {
     )
       throw new RangeError("HeadingLevel must be between 0 and 6.");
     if (name === "DocumentStyles") validateDocumentStyles(value);
+    if (name === "DocumentTheme" && value !== null)
+      validateDocumentTheme(value);
+    validateThemeProperty(name, value);
     cloneValue(value);
   }
   private writable(
@@ -1338,9 +1350,10 @@ export class TextElement extends DependencyObject {
   private namedValues: Record<string, any> = {};
   protected override get NamedStyleContext(): unknown {
     const doc = this.Document;
-    return doc?.values.DocumentStyles?.length
-      ? doc._namedStyleContext
-      : undefined;
+    return doc?._namedStyleContext;
+  }
+  protected override ResolveDocumentValue(name: string, value: any): any {
+    return resolveThemeValue(name, value, this.Document?.values.DocumentTheme);
   }
   protected override NamedStyleValue(name: string): any {
     const doc = this.Document;
@@ -3094,9 +3107,12 @@ export class FlowDocument extends TextElement {
   /** @internal */ _record(change: DocumentChange): void {
     if (
       ["insert", "remove", "reset"].includes(change.Kind) ||
-      ["DocumentStyles", "ParagraphStyleId", "CharacterStyleId"].includes(
-        change.Property ?? "",
-      )
+      [
+        "DocumentTheme",
+        "DocumentStyles",
+        "ParagraphStyleId",
+        "CharacterStyleId",
+      ].includes(change.Property ?? "")
     )
       this._namedStyleContext = {};
     if (change.Kind !== "property") this.pointerDirty = true;

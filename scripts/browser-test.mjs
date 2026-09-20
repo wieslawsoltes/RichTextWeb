@@ -1,3 +1,4 @@
+import { runDocumentThemeBrowserChecks } from "../tests/document-theme.browser.mjs";
 import { runDocumentStyleBrowserChecks } from "../tests/document-styles.browser.mjs";
 import { runContentControlBrowserChecks } from "../tests/content-controls.browser.mjs";
 import { runWordAuthoringBrowserChecks } from "../tests/word-authoring.browser.mjs";
@@ -237,6 +238,7 @@ try {
   });
   results.push(...(await runContentControlBrowserChecks(page)));
   results.push(...(await runDocumentStyleBrowserChecks(page)));
+  results.push(...(await runDocumentThemeBrowserChecks(page)));
   assert.deepEqual(errors, []);
   results.push("No uncaught browser errors");
   await writeFile(

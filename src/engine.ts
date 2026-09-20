@@ -1,4 +1,10 @@
 import {
+  validateDocumentTheme,
+  validateThemeProperty,
+  resolveThemeValue,
+  type DocumentTheme,
+} from "./document-theme.js";
+import {
   validateDocumentStyles,
   resolveDocumentStyle,
   visitStyledNodes,
@@ -278,7 +284,12 @@ function propertyInRange(
   end: number,
   name: string,
   defaultValue?: unknown,
+  resolveReferences = true,
 ): unknown {
+  const resolved = (v: unknown) =>
+    resolveReferences
+      ? resolveThemeValue(name, v, root.props.DocumentTheme)
+      : v;
   const list = leaves(root);
   const selected =
     start === end
@@ -287,9 +298,9 @@ function propertyInRange(
             list.find((item) => item.start === start),
         ].filter(Boolean)
       : list.filter((item) => item.end > start && item.start < end);
-  if (!selected.length) return root.props[name] ?? defaultValue;
+  if (!selected.length) return resolved(root.props[name] ?? defaultValue);
   const resolve = (item: (typeof list)[number]) =>
-    item.props[name] === undefined ? defaultValue : item.props[name];
+    resolved(item.props[name] === undefined ? defaultValue : item.props[name]);
   const value = resolve(selected[0]!);
   return selected.every(
     (item) => JSON.stringify(resolve(item!)) === JSON.stringify(value),
@@ -1264,6 +1275,51 @@ export class RichTextEngine {
       ),
     );
   }
+  GetDocumentTheme(): DocumentTheme | null {
+    this.assertLive();
+    const theme = this.Document.GetValue("DocumentTheme");
+    return theme == null ? null : validateDocumentTheme(theme);
+  }
+  SetDocumentTheme(theme: DocumentTheme | null): void {
+    this.assertLive();
+    const validated = theme === null ? null : validateDocumentTheme(theme);
+    this.mutate(
+      (root) => {
+        if (validated === null) delete root.props.DocumentTheme;
+        else root.props.DocumentTheme = validated;
+      },
+      false,
+      undefined,
+      { Kind: "Formatting", Operation: "SetDocumentTheme" },
+    );
+  }
+  /** Freeze current theme values throughout main/independent stories and styles before removing the theme. */
+  DetachDocumentTheme(): void {
+    const theme = this.GetDocumentTheme();
+    if (!theme) return;
+    const resolve = (props: Record<string, any>) => {
+      for (const key of [
+        "FontFamily",
+        "Foreground",
+        "Background",
+        "BorderBrush",
+      ])
+        if (props[key] !== undefined)
+          props[key] = resolveThemeValue(key, props[key], theme);
+    };
+    this.mutate(
+      (root) => {
+        visitStyledNodes(root, (n) => resolve(n.props));
+        for (const style of root.props.DocumentStyles ?? [])
+          resolve(style.Properties);
+        delete root.props.DocumentTheme;
+        resolve(this.typing);
+      },
+      false,
+      undefined,
+      { Kind: "Formatting", Operation: "DetachDocumentTheme" },
+    );
+  }
   /** Detached style catalog; direct formatting remains outside these definitions. */
   GetDocumentStyles(): DocumentStyle[] {
     this.assertLive();
@@ -1503,14 +1559,41 @@ export class RichTextEngine {
         !(characterStyleProperties as readonly string[]).includes(key)
           ? paragraph?.GetValue(key)
           : this.GetProperty(key);
-      if (value !== undefined && value !== null) properties[key] = value;
+      // Preserve a common symbolic theme reference when capturing a named style.
+      // Heterogeneous sources with the same effective appearance capture that literal appearance.
+      const reference = [
+        "FontFamily",
+        "Foreground",
+        "Background",
+        "BorderBrush",
+      ].includes(key)
+        ? this.start === this.end && key in this.typing
+          ? this.typing[key]
+          : propertyInRange(
+              this.Document.ToJSON(),
+              this.start,
+              this.end,
+              key,
+              value,
+              false,
+            )
+        : undefined;
+      if (value !== undefined && value !== null)
+        properties[key] =
+          typeof reference === "string" && reference.startsWith("theme:")
+            ? reference
+            : value;
     }
     return properties;
   }
 
   GetProperty(name: string): unknown {
     return this.start === this.end && name in this.typing
-      ? this.typing[name]
+      ? resolveThemeValue(
+          name,
+          this.typing[name],
+          this.Document.GetValue("DocumentTheme"),
+        )
       : propertyInRange(
           this.Document.ToJSON(),
           this.start,
@@ -1549,6 +1632,7 @@ export class RichTextEngine {
   }
   ApplyProperty(name: string, value: unknown): void {
     this.assertLive();
+    validateThemeProperty(name, value);
     if (!name || typeof name !== "string")
       throw new TypeError("A property name is required.");
     if (this.start === this.end) {
@@ -2258,6 +2342,7 @@ export class RichTextEngine {
     );
   }
   SetElementProperty(id: string, name: string, value: unknown): void {
+    validateThemeProperty(name, value);
     if (!name || typeof name !== "string")
       throw new TypeError("A property name is required.");
     const node = findNode(this.Document.ToJSON(), id);
@@ -2303,6 +2388,7 @@ export class RichTextEngine {
           ),
           Annotations: clone(target.props.StoryAnnotations ?? []),
           DocumentStyles: this.GetDocumentStyles(),
+          DocumentTheme: this.GetDocumentTheme(),
         }),
       ),
     );
@@ -2315,7 +2401,9 @@ export class RichTextEngine {
       const next = story.Document.ToJSON();
       if (
         JSON.stringify(next.props.DocumentStyles ?? []) !==
-        JSON.stringify(this.GetDocumentStyles())
+          JSON.stringify(this.GetDocumentStyles()) ||
+        JSON.stringify(next.props.DocumentTheme ?? null) !==
+          JSON.stringify(this.GetDocumentTheme())
       )
         throw new Error(
           "Edit shared style definitions in the parent document, not in a floating story draft.",
@@ -2915,6 +3003,12 @@ export class RichTextEngine {
     switch (name) {
       case "updatedocumentstylefromselection":
         return this.UpdateDocumentStyleFromSelection(String(parameter));
+      case "getdocumenttheme":
+        return this.GetDocumentTheme();
+      case "setdocumenttheme":
+        return this.SetDocumentTheme(parameter);
+      case "detachdocumenttheme":
+        return this.DetachDocumentTheme();
       case "getdocumentstyles":
         return this.GetDocumentStyles();
       case "resolvedocumentstyle":

@@ -40,3 +40,7 @@ The [feature audit](WORD-FEATURE-AUDIT.md) inventories the 42 source modules and
 ## Named document styles
 
 Named paragraph/character catalogs, based-on/default/next roles, live model and selection formatting, create/update from selection, direct-format clearing and safe deletion are available in the reusable engine. Shared manager and sample gallery/catalog use these APIs. Supported native DOCX definitions and references survive tests without private metadata; other formats resolve copies. See [DOCUMENT-STYLES.md](DOCUMENT-STYLES.md) for limits, native warnings, draft-catalog conflicts and the distinction between absolute setters and native toggle semantics. Table/list/linked styles, themes, latent/template organizers, advanced typography and Word desktop fidelity are not covered by this increment.
+
+## Document text themes
+
+Twelve-color palettes, semantic mapping, Latin major/minor fonts, symbolic style/local references, live model/renderer updates, undo/detach and shared theme/style dialogs are supported. Native DOCX retains supported theme parts/mappings/fonts/colors/shading; external theme links are inert and unsupported schemes report fallback warnings. Theme/settings/relationship fingerprints invalidate relevant private snapshots. See [DOCUMENT-THEMES.md](DOCUMENT-THEMES.md). Script/language-specific fonts, exact native color quantization, effect matrices, shape/chart/table-style/border themes, font embedding, exhaustive cross-part validation and Word visual/open-save comparison remain unqualified.

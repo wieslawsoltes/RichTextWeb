@@ -1,3 +1,4 @@
+export * from "./document-theme.js";
 export * from "./document-styles.js";
 export * from "./content-controls.js";
 export * from "./model.js";

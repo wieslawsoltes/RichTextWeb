@@ -70,6 +70,7 @@ const passive = new Set([
   "WordCount",
   "FormData",
   "DocumentStyles",
+  "DocumentTheme",
   "ValidateForm",
   "ReviewChanges",
   "Copy",

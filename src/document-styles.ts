@@ -1,3 +1,4 @@
+import { resolveThemeValue, validateThemeProperty } from "./document-theme.js";
 import type { DocumentNode } from "./model.js";
 
 export type DocumentStyleKind = "Paragraph" | "Character";
@@ -102,6 +103,7 @@ export function validateDocumentStyles(input: unknown): DocumentStyle[] {
       );
     const allowed = value.Kind === "Paragraph" ? paragraphKeys : characterKeys;
     for (const [key, v] of Object.entries(value.Properties)) {
+      validateThemeProperty(key, v);
       if (!allowed.has(key))
         throw new Error(`Unsupported ${value.Kind} style property: ${key}.`);
       if (own(choices, key)) {
@@ -259,12 +261,19 @@ export function nodeStyleProperties(
 export function materializeDocumentStyles(root: DocumentNode): DocumentNode {
   const copy = structuredClone(root),
     styles = root.props.DocumentStyles;
-  if (!styles) return copy;
+  // Resolve token fallbacks even in documents without a theme or named styles.
   const visit = (node: DocumentNode) => {
     node.props = {
       ...nodeStyleProperties(node.type, node.props, styles),
       ...node.props,
     };
+    for (const key of ["FontFamily", "Foreground", "Background", "BorderBrush"])
+      if (node.props[key] !== undefined)
+        node.props[key] = resolveThemeValue(
+          key,
+          node.props[key],
+          root.props.DocumentTheme,
+        );
     for (const child of node.children ?? []) visit(child);
     for (const key of [
       "Headers",

@@ -25,6 +25,12 @@ The reusable toolbar adds insertion, properties, value editing, isolated rich dr
 
 This does not implement every Word form feature or a security boundary: picture/repeating/building-block controls, custom XML binding, legacy forms and restricted-editing permissions remain. Required/maximum-length rules are local application metadata. Source/package versions are unchanged.
 
+## Connected document themes — source, unreleased
+
+The engine now retains live twelve-color palettes, semantic color mappings, Latin heading/body font roles, and symbolic style/direct-format links. Theme edits are undoable; fixed literal formatting is preserved. Shared theme preview/customization, selection pickers and style-link controls are available in Home. Choose **Connected document themes** to change the report palette and heading font while keeping its direct violet brand color.
+
+Native DOCX retains supported theme parts, mappings, font/color/shading references and fallbacks. Theme/settings/relationship fingerprints reject stale private snapshots after relevant native-part edits. [Theme APIs and explicit limits](docs/DOCUMENT-THEMES.md) · [Complete feature audit](docs/WORD-FEATURE-AUDIT.md). This is text theming, not full Office script-font, drawing/effects, table-style or native visual equivalence. Version remains 0.5.0; no new package release is implied.
+
 ## Named document styles — source, unreleased
 
 The shared engine now supports named paragraph and character styles, based-on/default/following-paragraph roles, live definition updates, direct-format preservation, selection-based creation/update and safe deletion with replacement. The toolbar has a reusable style manager; Document Studio's Home ribbon, preset gallery and document catalog use the same APIs. Choose **Named document styles** to exercise the live sample.
