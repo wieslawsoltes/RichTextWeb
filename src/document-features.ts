@@ -1,3 +1,10 @@
+import {
+  createMailMergePlan,
+  mailMergeLimits,
+  type MailMergeOptions,
+  type MailMergePlan,
+  type MailMergeRecipient,
+} from "./mail-merge.js";
 import { nodeStyleProperties } from "./document-styles.js";
 import {
   parseFieldCode,
@@ -35,6 +42,8 @@ export type FieldType =
   | "REF"
   | "PAGEREF"
   | "MERGEFIELD"
+  | "MERGEREC"
+  | "MERGESEQ"
   | "SEQ"
   | "TITLE"
   | "AUTHOR"
@@ -57,6 +66,9 @@ export interface FieldDefinition {
   Format?: string;
 }
 export interface FieldContext {
+  /** Explicit mail-merge ordinals. No record number is invented outside a merge. */
+  MergeRecord?: number;
+  MergeSequence?: number;
   /** Snapshot preserves legacy caches; Current resolves REF/formula bookmark dependencies in this update. */
   ReferenceMode?: "Snapshot" | "Current";
   PageNumber?: number;
@@ -533,7 +545,39 @@ export function updateDocumentFields(
           value = variable(arg);
           break;
         case "MERGEFIELD":
-          value = own(context.Data, arg);
+          if (code.Switches.m || code.Switches.v)
+            throw new Error(
+              "Mapped or vertical merge fields are not supported.",
+            );
+          for (const name of ["b", "f"])
+            if (code.Switches[name] && code.Switches[name]!.length !== 1)
+              throw new SyntaxError(
+                "Merge field prefix/suffix requires one text argument.",
+              );
+          value =
+            context.Data &&
+            Object.hasOwn(context.Data, arg) &&
+            context.Data[arg] === null
+              ? ""
+              : own(context.Data, arg);
+          break;
+        case "MERGEREC":
+        case "MERGESEQ":
+          if (code.Arguments.length)
+            throw new SyntaxError(
+              "Merge numbering fields do not accept arguments.",
+            );
+          value =
+            code.Type === "MERGEREC"
+              ? context.MergeRecord
+              : context.MergeSequence;
+          if (
+            value !== undefined &&
+            (!Number.isSafeInteger(value) || value < 1)
+          )
+            throw new RangeError(
+              "Merge record numbers must be positive safe integers.",
+            );
           break;
         case "SEQ":
           value = sequenceValues.get(node);
@@ -631,7 +675,8 @@ export function updateDocumentFields(
           : code.Switches["#"]
             ? parseFieldNumber(String(value))
             : undefined;
-      if (number !== undefined) {
+      if (code.Type === "MERGEFIELD" && value === "") display = "";
+      else if (number !== undefined) {
         if (!Number.isFinite(number))
           throw new RangeError("A field result is not finite.");
         numericValues.set(node, number);
@@ -654,6 +699,9 @@ export function updateDocumentFields(
       }
       if (code.Type === "SEQ" && code.Switches.h) display = "";
       display = formatFieldText(display, general, context.Locale);
+      if (code.Type === "MERGEFIELD" && display !== "")
+        display =
+          (code.Switches.b?.[0] ?? "") + display + (code.Switches.f?.[0] ?? "");
       values.set(node, display);
       return display;
     } catch (error) {
@@ -1161,15 +1209,125 @@ export class DocumentFeatures {
     collect(root);
     section.children = entries;
   }
-  /** Create independent merged documents; template metadata and field definitions remain available. */
+  /** Snapshot the template, recipients and query for repeatable preview and generation. */
+  CreateMailMergeSession(
+    records: unknown,
+    options: MailMergeOptions = {},
+    context: Omit<FieldContext, "Data" | "MergeRecord" | "MergeSequence"> = {},
+  ): MailMergeSession {
+    return new MailMergeSession(
+      this.Engine.Document,
+      records,
+      options,
+      context,
+    );
+  }
+  /** Backward-compatible entry point; options add filtering, sorting and selection. */
   MailMerge(
     records: Record<string, unknown>[],
     context: Omit<FieldContext, "Data"> = {},
+    options: MailMergeOptions = {},
   ): FlowDocument[] {
-    return records.map((data) => {
-      const root = this.Engine.Document.ToJSON();
-      updateDocumentFields(root, { ...context, Data: data });
-      return FlowDocument.FromJSON(root);
+    return this.CreateMailMergeSession(records, options, context).Generate();
+  }
+}
+
+export interface MailMergePreview {
+  Recipient: MailMergeRecipient;
+  Document: FlowDocument;
+  Fields: FieldUpdateResult;
+}
+/** An immutable input snapshot; previews and outputs are independent editable documents.
+ * No recipient list is persisted in the template or sent to an external service.
+ */
+export class MailMergeSession {
+  private readonly template: DocumentNode;
+  private readonly plan: MailMergePlan;
+  private readonly context: FieldContext;
+  private readonly strict: boolean;
+  private readonly nodeCount: number;
+  private readonly templateSize: number;
+  constructor(
+    template: FlowDocument,
+    records: unknown,
+    options: MailMergeOptions = {},
+    context: Omit<FieldContext, "Data" | "MergeRecord" | "MergeSequence"> = {},
+  ) {
+    this.plan = createMailMergePlan(records, options);
+    this.template = template.ToJSON();
+    this.strict = options.FailOnUnresolved ?? false;
+    this.context = {
+      ReferenceMode: "Current",
+      Locale: options.Locale,
+      ...context,
+      Now: new Date((context.Now ?? new Date()).getTime()),
+      ...(context.Variables ? { Variables: copy(context.Variables) } : {}),
+      ...(context.Properties ? { Properties: copy(context.Properties) } : {}),
+    };
+    if (!Number.isFinite(this.context.Now!.getTime()))
+      throw new TypeError("Invalid merge timestamp.");
+    let count = 0;
+    for (const story of storyRoots(this.template)) walk(story, () => count++);
+    this.nodeCount = count;
+    this.templateSize = JSON.stringify(this.template).length;
+    this.checkBudget(1);
+  }
+  get Plan(): MailMergePlan {
+    return copy(this.plan);
+  }
+  get Count(): number {
+    return this.plan.Recipients.length;
+  }
+  private checkBudget(count: number): void {
+    if (
+      count > mailMergeLimits.GeneratedDocuments ||
+      count * this.nodeCount > mailMergeLimits.GeneratedNodes ||
+      count * this.templateSize > mailMergeLimits.GeneratedCharacters
+    )
+      throw new RangeError(
+        "Mail merge output exceeds its document/node/text budget. Select a smaller record range.",
+      );
+  }
+  Preview(sequenceNumber = 1): MailMergePreview {
+    if (
+      !Number.isSafeInteger(sequenceNumber) ||
+      sequenceNumber < 1 ||
+      sequenceNumber > this.Count
+    )
+      throw new RangeError("Preview requires a selected output record number.");
+    const recipient = this.plan.Recipients[sequenceNumber - 1]!,
+      root = copy(this.template);
+    const fields = updateDocumentFields(root, {
+      ...this.context,
+      Data: recipient.Data,
+      MergeRecord: recipient.RecordNumber,
+      MergeSequence: recipient.SequenceNumber,
     });
+    if (JSON.stringify(root).length > mailMergeLimits.GeneratedCharacters)
+      throw new RangeError("Merged document exceeds its text budget.");
+    return {
+      Recipient: copy(recipient),
+      Document: FlowDocument.FromJSON(root),
+      Fields: fields,
+    };
+  }
+  Generate(): FlowDocument[] {
+    this.checkBudget(this.Count);
+    const documents: FlowDocument[] = [];
+    let size = 0;
+    for (let index = 1; index <= this.Count; index++) {
+      const preview = this.Preview(index);
+      if (this.strict && preview.Fields.Unresolved.length)
+        throw new Error(
+          `Recipient ${preview.Recipient.SourceRecord}: ${preview.Fields.Unresolved[0]!.Reason}`,
+        );
+      size += JSON.stringify(preview.Document.ToJSON()).length;
+      if (size > mailMergeLimits.GeneratedCharacters)
+        throw new RangeError(
+          "Merged output exceeds its cumulative text budget.",
+        );
+      documents.push(preview.Document);
+    }
+    return documents;
   }
 }

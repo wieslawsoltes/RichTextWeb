@@ -1,3 +1,4 @@
+import { mailMergeExampleRecords } from "./mail-merge.js";
 /** RibbonWeb host configuration. Document commands belong to RichTextWeb controls. */
 export function createDocumentRibbon({
   button,
@@ -429,7 +430,14 @@ export function createDocumentRibbon({
         "Mailings",
         [
           group("mail-merge", "Mail merge", [
-            t("MailMerge", "Start mail merge", "page", large),
+            b(
+              "MailMergeRecipients",
+              "Recipients & preview",
+              "page",
+              () => control("MailMergeRecipients", mailMergeExampleRecords),
+              large,
+            ),
+            t("MailMerge", "Quick JSON merge", "table"),
             t("Field", "Insert merge field", "formula", large),
             t("UpdateFields", "Update fields", "redo"),
             b("merge-field-list", "Field list", "table", () =>

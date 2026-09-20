@@ -1,3 +1,4 @@
+import { createMailMergeSample } from "./mail-merge.js";
 import { createThemesSample } from "./themes.js";
 import { createStylesSample } from "./styles.js";
 import { createFormsSample } from "./forms.js";
@@ -138,6 +139,14 @@ function updateReadOnlyControls() {
   if ($("source-code")) $("source-code").readOnly = locked;
 }
 const templates = {
+  mailings: {
+    name: "Personalized project invitations",
+    description:
+      "Local recipient filtering, sorting, selection, rich previews and individual generated documents.",
+    build() {
+      return createMailMergeSample(RT);
+    },
+  },
   themes: {
     name: "Connected document themes",
     description:
