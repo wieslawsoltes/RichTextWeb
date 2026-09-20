@@ -78,7 +78,7 @@ Baseline: `ada9116828a03a24bf73a3267722462825467d90` (#25, 576 Node tests). [DOC
 
 `document-style-ui.ts` and the toolbar expose a shared manager, preview, apply/create/modify/update/delete and direct-format clearing. The Home ribbon, preset gallery and document catalog share those definitions. The `styles` sample demonstrates live inheritance and independent overrides. Named headings feed outline/TOC generation, shared definitions render across stories, and detached story/control drafts reject catalog conflicts. Sequential collaboration and undo are tested; same-definition concurrent intent remains separate work.
 
-The continuation adds **54 Node regressions (630 total)** and **eight browser groups (141 total when the full suite passes)**. Local typecheck, library/demo builds and Node tests pass. Local Chromium navigation is blocked by policy; exact-commit CI is required for browser, package, native Windows and Blazor evidence. No Word desktop visual/open-save qualification is claimed. Table/list/linked styles, themes, latent/template styles, advanced typography, numbering integration and comprehensive native toggle semantics remain.
+The continuation adds **56 Node regressions (632 total)** and **eight browser groups (141 total when the full suite passes)**. Local typecheck, library/demo builds and Node tests pass. Local Chromium navigation is blocked by policy; exact-commit CI is required for browser, package, native Windows and Blazor evidence. No Word desktop visual/open-save qualification is claimed. Table/list/linked styles, themes, latent/template styles, advanced typography, numbering integration and comprehensive native toggle semantics remain.
 
 ## Prioritized remaining implementation work
 
