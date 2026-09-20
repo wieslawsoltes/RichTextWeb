@@ -1,0 +1,53 @@
+name: Prepare verified field-reference source
+on:
+  push:
+    branches: [work/word-reference-source]
+    paths: [.word-followup/changes.json]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply exact locally verified edits
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          manifest = json.loads(pathlib.Path('.word-followup/changes.json').read_text())
+          def blob(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          staged = []
+          for item in manifest['files']:
+              name = item['path']
+              assert name.startswith(('src/', 'sample/', 'tests/', 'docs/')) or name == 'README.md'
+              assert '..' not in pathlib.PurePosixPath(name).parts
+              p = pathlib.Path(name)
+              old = p.read_bytes()
+              assert blob(old) == item['before'], f'Unexpected source: {name}'
+              lines = old.decode().splitlines(keepends=True)
+              for start, end, value in reversed(item['edits']):
+                  assert 0 <= start <= end <= len(lines)
+                  lines[start:end] = value.splitlines(keepends=True)
+              new = ''.join(lines).encode()
+              assert blob(new) == item['after'], f'Unexpected output: {name}: {blob(new)}'
+              staged.append((p, new))
+          for name, expected in manifest['new'].items():
+              assert blob(pathlib.Path(name).read_bytes()) == expected, f'New file mismatch: {name}'
+          for p, data in staged:
+              p.write_bytes(data)
+          print('Verified all twelve output blobs against locally tested source.')
+          PY
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git rm -r .word-followup .github/workflows/word-reference-apply.yml
+          git add README.md docs src sample tests
+          git diff --cached --check
+          git commit -m 'feat: resolve pending field references and constrain caption bookmarks'
+          git push origin HEAD:refs/heads/work/word-reference-source
+          git rev-parse HEAD
+          git rev-parse 'HEAD^{tree}'
