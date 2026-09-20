@@ -1,3 +1,4 @@
+import { createStylesSample } from "./styles.js";
 import { createFormsSample } from "./forms.js";
 import * as RT from "../src/index.ts";
 import { createWordWorkspace } from "./word-workspace.js";
@@ -136,6 +137,14 @@ function updateReadOnlyControls() {
   if ($("source-code")) $("source-code").readOnly = locked;
 }
 const templates = {
+  styles: {
+    name: "Named document styles",
+    description:
+      "Live paragraph and character styles, inheritance, direct overrides and native DOCX style definitions.",
+    build() {
+      return createStylesSample(RT);
+    },
+  },
   forms: {
     name: "Fillable project brief",
     description:
@@ -390,7 +399,7 @@ function walk(node, fn) {
 function outline() {
   const headings = [];
   let offset = 0;
-  walk(editor.Document.ToJSON(), (n) => {
+  walk(RT.materializeDocumentStyles(editor.Document.ToJSON()), (n) => {
     if (n.type === "Paragraph" || n.type === "BlockUIContainer") {
       const text = plain(n);
       if (n.props?.HeadingLevel)

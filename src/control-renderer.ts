@@ -1,3 +1,4 @@
+import { nodeStyleProperties } from "./document-styles.js";
 import { validateContentControlProperties } from "./content-controls.js";
 import { renderEquation, equationOptions } from "./equations.js";
 import type { DocumentNode, TextElement } from "./model.js";
@@ -26,6 +27,7 @@ export interface RenderStatistics {
 }
 
 const renderedProperties = [
+  "HeadingLevel",
   "FontFamily",
   "FontSize",
   "FontWeight",
@@ -459,7 +461,14 @@ export function renderDocument(
   let blockSeen = false;
 
   function visit(current: DocumentNode, parent: Node): void {
-    const props = current.props || {};
+    const props = {
+      ...nodeStyleProperties(
+        current.type,
+        current.props || {},
+        node.props.DocumentStyles,
+      ),
+      ...current.props,
+    };
     const isParagraph = current.type === "Paragraph";
     const isAtomicBlock = current.type === "BlockUIContainer";
     if (isParagraph || isAtomicBlock) {
@@ -693,7 +702,7 @@ export function renderDocument(
           {
             type: "FlowDocument",
             id: `${current.id}-story`,
-            props: {},
+            props: { DocumentStyles: node.props.DocumentStyles },
             children: current.children || [],
           },
           owner,

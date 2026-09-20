@@ -1,4 +1,13 @@
 import {
+  documentStylesXML,
+  readDocumentStyles,
+} from "./document-style-docx.js";
+import {
+  validateDocumentStyles,
+  nodeStyleProperties,
+  visitStyledNodes,
+} from "./document-styles.js";
+import {
   contentControlPropertiesXML,
   readContentControlProperties,
   readContentControlPlaceholders,
@@ -327,6 +336,16 @@ function bytesBase64(value: Uint8Array): string {
 /** Produces a real OPC/WordprocessingML package with styled text, tables, lists and embedded images. */
 export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   const root = document.ToJSON();
+  const namedStyles = validateDocumentStyles(root.props.DocumentStyles ?? []);
+  // Native references carry style-derived values. Do not freeze them as direct run properties.
+  const exportProps = (node: DocumentNode, inherited: Record<string, any>) => {
+    const props = { ...inherited };
+    for (const key of Object.keys(
+      nodeStyleProperties(node.type, node.props, namedStyles),
+    ))
+      delete props[key];
+    return { ...props, ...node.props };
+  };
   const contentControls = collectContentControlNodes(root);
   let contentControlId = 0;
   const contentControlPlaceholders: { Id: number; Text: string }[] = [];
@@ -418,7 +437,11 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
       );
   }
   const runProperties = (props: Record<string, any>) => {
-    let xml = "";
+    let xml = props.CharacterStyleId
+      ? `<w:rStyle w:val="${esc(props.CharacterStyleId)}"/>`
+      : "";
+    if (props.Language) xml += `<w:lang w:val="${esc(props.Language)}"/>`;
+    if (props.TextDecorations === "None") xml += '<w:u w:val="none"/>';
     if (props.FontWeight != null)
       xml += `<w:b w:val="${/bold|[6-9]00/i.test(String(props.FontWeight)) ? 1 : 0}"/>`;
     if (props.FontStyle != null)
@@ -648,7 +671,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     n: DocumentNode,
     inherited: Record<string, any> = {},
   ): string => {
-    const props = { ...inherited, ...n.props };
+    const props = exportProps(n, inherited);
     if (n.props.ContentControl) {
       const pr = controlXML(n);
       delete props.ContentControl;
@@ -870,7 +893,9 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   ): string => {
     if (reviewActive && paragraphCount++ > 0) exportOffset++;
     let pPr = "";
-    if (n.props.HeadingLevel)
+    if (n.props.ParagraphStyleId)
+      pPr += `<w:pStyle w:val="${esc(n.props.ParagraphStyleId)}"/>`;
+    else if (n.props.HeadingLevel)
       pPr += `<w:pStyle w:val="Heading${Math.max(1, Math.min(6, Number(n.props.HeadingLevel)))}"/>`;
     else if (n.props.Caption || n.props.StyleName === "Caption")
       pPr += '<w:pStyle w:val="Caption"/>';
@@ -878,19 +903,40 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
       pPr += `<w:bidi w:val="${props.FlowDirection === "RightToLeft" ? "1" : "0"}"/>`;
     if (props.TextAlignment)
       pPr += `<w:jc w:val="${esc(String(props.TextAlignment).toLowerCase().replace("justify", "both"))}"/>`;
-    if (props.BreakPageBefore) pPr += "<w:pageBreakBefore/>";
-    if (props.KeepTogether) pPr += "<w:keepLines/>";
-    if (props.KeepWithNext) pPr += "<w:keepNext/>";
-    if (
-      (props.Margin && typeof props.Margin === "object") ||
-      props.LineHeight ||
-      props.TextIndent
-    ) {
-      const margin =
-        props.Margin && typeof props.Margin === "object" ? props.Margin : {};
-      pPr += `<w:spacing w:before="${pxToTwip(margin.Top)}" w:after="${pxToTwip(margin.Bottom)}"${props.LineHeight ? ` w:line="${pxToTwip(props.LineHeight)}" w:lineRule="exact"` : ""}/>`;
-      pPr += `<w:ind w:left="${pxToTwip(margin.Left)}" w:right="${pxToTwip(margin.Right)}"${props.TextIndent ? (Number(props.TextIndent) < 0 ? ` w:hanging="${pxToTwip(-Number(props.TextIndent))}"` : ` w:firstLine="${pxToTwip(props.TextIndent)}"`) : ""}/>`;
-    }
+    for (const [key, tag] of [
+      ["BreakPageBefore", "pageBreakBefore"],
+      ["KeepTogether", "keepLines"],
+      ["KeepWithNext", "keepNext"],
+    ])
+      if (props[key] !== undefined)
+        pPr += `<w:${tag} w:val="${props[key] ? 1 : 0}"/>`;
+    if (n.props.ParagraphStyleId && n.props.HeadingLevel !== undefined)
+      pPr += `<w:outlineLvl w:val="${n.props.HeadingLevel ? n.props.HeadingLevel - 1 : 9}"/>`;
+    const m =
+      typeof props.Margin === "number"
+        ? {
+            Left: props.Margin,
+            Top: props.Margin,
+            Right: props.Margin,
+            Bottom: props.Margin,
+          }
+        : props.Margin && typeof props.Margin === "object"
+          ? props.Margin
+          : {};
+    const spacing =
+      (m.Top === undefined ? "" : ` w:before="${pxToTwip(m.Top)}"`) +
+      (m.Bottom === undefined ? "" : ` w:after="${pxToTwip(m.Bottom)}"`) +
+      (props.LineHeight === undefined
+        ? ""
+        : ` w:line="${pxToTwip(props.LineHeight)}" w:lineRule="exact"`);
+    const indent =
+      (m.Left === undefined ? "" : ` w:left="${pxToTwip(m.Left)}"`) +
+      (m.Right === undefined ? "" : ` w:right="${pxToTwip(m.Right)}"`) +
+      (props.TextIndent === undefined
+        ? ""
+        : ` w:${Number(props.TextIndent) < 0 ? "hanging" : "firstLine"}="${pxToTwip(Math.abs(Number(props.TextIndent)))}"`);
+    if (spacing) pPr += `<w:spacing${spacing}/>`;
+    if (indent) pPr += `<w:ind${indent}/>`;
     if (num)
       pPr += `<w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="${num}"/></w:numPr>`;
     const formatRevision =
@@ -939,7 +985,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   ): string =>
     nodes
       .map((n) => {
-        const props = { ...inherited, ...n.props };
+        const props = exportProps(n, inherited);
         if (n.props.ContentControl) {
           const pr = controlXML(n);
           delete props.ContentControl;
@@ -1314,7 +1360,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
       ["Formatting", "Move", "TableStructure", "Structural"].includes(a.Kind),
     ) ||
       hasFloatingStory(root) ||
-      contentControls.length > 0) &&
+      contentControls.length > 0 ||
+      namedStyles.length > 0) &&
     globalThis.crypto?.subtle
   ) {
     const mainXML = await zip.file("word/document.xml")!.async("string");
@@ -1336,10 +1383,67 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     );
   }
   relationship("styles", "styles.xml");
+  const legacyStyles = new Set<string>();
+  const findLegacyStyles = (n: DocumentNode) => {
+    if (n.type === "Paragraph" && !n.props.ParagraphStyleId) {
+      if (n.props.HeadingLevel)
+        legacyStyles.add(`Heading${n.props.HeadingLevel}`);
+      else if (n.props.Caption || n.props.StyleName === "Caption")
+        legacyStyles.add("Caption");
+    }
+    for (const c of n.children ?? []) findLegacyStyles(c);
+    for (const key of [
+      "Headers",
+      "Footers",
+      "FirstPageHeader",
+      "FirstPageFooter",
+      "EvenPageHeader",
+      "EvenPageFooter",
+    ])
+      for (const c of n.props[key] ?? []) findLegacyStyles(c);
+    for (const key of ["Footnotes", "Endnotes"])
+      for (const note of n.props[key] ?? [])
+        for (const c of note.Blocks ?? []) findLegacyStyles(c);
+  };
+  findLegacyStyles(root);
+  const fallbackStyles = [
+    {
+      Id: "Normal",
+      Name: "Normal",
+      Kind: "Paragraph" as const,
+      IsDefault: !namedStyles.some((s) => s.IsDefault),
+      Properties: {},
+    },
+    {
+      Id: "Caption",
+      Name: "Caption",
+      Kind: "Paragraph" as const,
+      BasedOn: "Normal",
+      Properties: {},
+    },
+    ...Array.from({ length: 6 }, (_, i) => ({
+      Id: `Heading${i + 1}`,
+      Name: `heading ${i + 1}`,
+      Kind: "Paragraph" as const,
+      BasedOn: "Normal",
+      Properties: {
+        HeadingLevel: i + 1,
+        FontWeight: "Bold",
+        FontSize: (48 - i * 4) / 1.5,
+      },
+    })),
+  ].filter(
+    (s) =>
+      !namedStyles.some((n) => n.Id === s.Id) &&
+      (!namedStyles.length ||
+        legacyStyles.has(s.Id) ||
+        (s.Id === "Normal" && legacyStyles.size > 0)),
+  );
   zip.file(
     "word/styles.xml",
-    `<w:styles xmlns:w="${NS}"><w:docDefaults><w:rPrDefault>${runProperties(root.props)}</w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/></w:style>${Array.from({ length: 6 }, (_, i) => `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${48 - i * 4}"/></w:rPr></w:style>`).join("")}</w:styles>`,
+    `<w:styles xmlns:w="${NS}"><w:docDefaults><w:rPrDefault>${runProperties(root.props)}</w:rPrDefault></w:docDefaults>${documentStylesXML([...fallbackStyles, ...namedStyles], runProperties)}</w:styles>`,
   );
+
   if (numberings.length) {
     relationship("numbering", "numbering.xml");
     zip.file(
@@ -1420,6 +1524,19 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     "[Content_Types].xml",
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${[...mediaTypes].map((ext) => `<Default Extension="${ext}" ContentType="image/${ext === "jpg" ? "jpeg" : ext}"/>`).join("")}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>${numberings.length ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' : ""}${extraTypes.join("")}</Types>`,
   );
+  const extension = zip.file("customXml/richtextweb-review.xml");
+  if (extension && namedStyles.length) {
+    const stylesDigest = await mainPartDigest(
+      await zip.file("word/styles.xml")!.async("string"),
+    );
+    zip.file(
+      "customXml/richtextweb-review.xml",
+      (await extension.async("string")).replace(
+        ' version="1"',
+        ` stylesSha256="${stylesDigest}" version="1"`,
+      ),
+    );
+  }
   return zip.generateAsync({
     type: "uint8array",
     compression: "DEFLATE",
@@ -1520,9 +1637,8 @@ export async function fromDOCX(
       ? resolve(r.attrs.Target!)
       : dir + fallback;
   };
-  const styleRoot = parseOfficeXML(
-      await read(findPart("styles", "styles.xml")),
-    ),
+  const stylesPart = await read(findPart("styles", "styles.xml"));
+  const styleRoot = parseOfficeXML(stylesPart),
     numberingRoot = parseOfficeXML(
       await read(findPart("numbering", "numbering.xml")),
     );
@@ -1538,6 +1654,10 @@ export async function fromDOCX(
   const runProps = (pr?: MarkupNode): Record<string, any> => {
     const p: Record<string, any> = {};
     if (!pr) return p;
+    const named = val(child(pr, "w:rStyle"));
+    if (named) p.CharacterStyleId = named;
+    const language = val(child(pr, "w:lang"));
+    if (language) p.Language = language;
     if (child(pr, "w:b"))
       p.FontWeight = bool(child(pr, "w:b")) ? "Bold" : "Normal";
     if (child(pr, "w:i"))
@@ -1571,22 +1691,10 @@ export async function fromDOCX(
   const styles = new Map(
     descendants(styleRoot, "w:style").map((s) => [s.attrs["w:styleId"]!, s]),
   );
-  const inheritedStyle = (
-    id?: string,
-    seen = new Set<string>(),
-  ): Record<string, any> => {
-    if (!id || seen.has(id)) return {};
-    seen.add(id);
-    const style = styles.get(id);
-    if (!style) return {};
-    return {
-      ...inheritedStyle(val(child(style, "w:basedOn")), seen),
-      ...runProps(child(style, "w:rPr")),
-    };
-  };
   const paragraphProps = (pr?: MarkupNode): Record<string, any> => {
     const styleId = val(child(pr, "w:pStyle")),
-      p = inheritedStyle(styleId);
+      p: Record<string, any> = {};
+    if (styleId) p.ParagraphStyleId = styleId;
     if (!pr) return p;
     if (styleId === "Caption") p.StyleName = "Caption";
     if (child(pr, "w:bidi"))
@@ -1597,16 +1705,17 @@ export async function fromDOCX(
     if (align)
       p.TextAlignment =
         align === "both" ? "Justify" : align[0]!.toUpperCase() + align.slice(1);
-    const heading = styleId?.match(/^Heading([1-6])$/i);
-    const outline =
-      val(child(pr, "w:outlineLvl")) ??
-      val(child(child(styles.get(styleId ?? ""), "w:pPr"), "w:outlineLvl"));
-    if (heading) p.HeadingLevel = Number(heading[1]);
-    else if (outline != null && Number(outline) < 6)
-      p.HeadingLevel = Number(outline) + 1;
-    if (bool(child(pr, "w:pageBreakBefore"))) p.BreakPageBefore = true;
-    if (bool(child(pr, "w:keepLines"))) p.KeepTogether = true;
-    if (bool(child(pr, "w:keepNext"))) p.KeepWithNext = true;
+    if (val(child(pr, "w:outlineLvl")) != null)
+      p.HeadingLevel =
+        Number(val(child(pr, "w:outlineLvl"))) === 9
+          ? 0
+          : Number(val(child(pr, "w:outlineLvl"))) + 1;
+    for (const [key, tag] of [
+      ["BreakPageBefore", "pageBreakBefore"],
+      ["KeepTogether", "keepLines"],
+      ["KeepWithNext", "keepNext"],
+    ])
+      if (child(pr, `w:${tag}`)) p[key] = bool(child(pr, `w:${tag}`));
     const spacing = child(pr, "w:spacing"),
       indent = child(pr, "w:ind");
     const line = Number(spacing?.attrs["w:line"]);
@@ -1631,6 +1740,7 @@ export async function fromDOCX(
       };
     return p;
   };
+  const importedStyles = readDocumentStyles(styleRoot, runProps);
   let images = new Map<string, string>();
   for (const [rid, rel] of relationships) {
     if (!rel.Type?.endsWith("/image") || rel.TargetMode === "External")
@@ -2551,6 +2661,10 @@ export async function fromDOCX(
   );
   const sectPr = child(body, "w:sectPr");
   Object.assign(defaults, sectionProps(sectPr));
+  if (importedStyles.Styles.length)
+    defaults.DocumentStyles = importedStyles.Styles;
+  if (importedStyles.Warnings.length)
+    defaults.DocxStyleImportWarnings = importedStyles.Warnings;
   const documentBlocks = convertBlocks(body.children);
   if (annotations.length) defaults.Annotations = annotations;
   const bodyRelationships = relationships,
@@ -2902,7 +3016,9 @@ export async function fromDOCX(
     );
     if (
       review?.attrs.version === "1" &&
-      review.attrs.mainSha256 === (await mainPartDigest(main))
+      review.attrs.mainSha256 === (await mainPartDigest(main)) &&
+      (!review.attrs.stylesSha256 ||
+        review.attrs.stylesSha256 === (await mainPartDigest(stylesPart)))
     ) {
       const payload = review.children.find((n) => n.name === "rtw:document");
       if (payload) {
@@ -2920,7 +3036,28 @@ export async function fromDOCX(
   }
   if (contentControlWarnings.length)
     defaults.ContentControlImportWarnings = contentControlWarnings;
-  return FlowDocument.FromJSON(node("FlowDocument", documentBlocks, defaults));
+  const nativeRoot = node("FlowDocument", documentBlocks, defaults);
+  const definedStyles = new Map(
+    importedStyles.Styles.map((s) => [s.Id, s.Kind]),
+  );
+  visitStyledNodes(nativeRoot, (n) => {
+    for (const [key, kind] of [
+      ["ParagraphStyleId", "Paragraph"],
+      ["CharacterStyleId", "Character"],
+    ]) {
+      const id = n.props[key];
+      if (id && definedStyles.get(id) !== kind) {
+        if (importedStyles.Warnings.length < 100)
+          importedStyles.Warnings.push(
+            `${id}: Missing or unsupported style reference removed; body retained.`,
+          );
+        delete n.props[key];
+      }
+    }
+  });
+  if (importedStyles.Warnings.length)
+    defaults.DocxStyleImportWarnings = importedStyles.Warnings;
+  return FlowDocument.FromJSON(nativeRoot);
 }
 
 async function mainPartDigest(source: string): Promise<string> {

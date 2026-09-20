@@ -1,3 +1,4 @@
+import { runDocumentStyleBrowserChecks } from "../tests/document-styles.browser.mjs";
 import { runContentControlBrowserChecks } from "../tests/content-controls.browser.mjs";
 import { runWordAuthoringBrowserChecks } from "../tests/word-authoring.browser.mjs";
 import { runPageAuthoringBrowserChecks } from "../tests/page-authoring.browser.mjs";
@@ -235,6 +236,7 @@ try {
     fullPage: true,
   });
   results.push(...(await runContentControlBrowserChecks(page)));
+  results.push(...(await runDocumentStyleBrowserChecks(page)));
   assert.deepEqual(errors, []);
   results.push("No uncaught browser errors");
   await writeFile(

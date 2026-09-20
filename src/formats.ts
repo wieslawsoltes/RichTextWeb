@@ -1,3 +1,4 @@
+import { materializeDocumentStyles } from "./document-styles.js";
 import {
   renderEquation,
   equationOptions,
@@ -448,7 +449,7 @@ function htmlNode(node: DocumentNode, phrasingBlocks = false): string {
 }
 /** Safe inert HTML. Scriptable URLs, event handlers and arbitrary CSS never enter the result. */
 export function toHTML(doc: FlowDocument): string {
-  return htmlNode(doc.ToJSON());
+  return htmlNode(materializeDocumentStyles(doc.ToJSON()));
 }
 function parsedLength(value: string): number | string {
   return /^-?[\d.]+(?:px|pt)?$/.test(value)
@@ -952,7 +953,7 @@ function markdownBlocks(nodes: DocumentNode[], depth = 0): string {
     .join("\n\n");
 }
 export function toMarkdown(doc: FlowDocument): string {
-  return markdownBlocks(doc.ToJSON().children ?? []);
+  return markdownBlocks(materializeDocumentStyles(doc.ToJSON()).children ?? []);
 }
 const markdownParser = new Marked({ gfm: true, async: false });
 const equationMarkup = (source: string, display: boolean) =>
@@ -1109,7 +1110,7 @@ function xamlNode(node: DocumentNode, root = false): string {
   return `<${node.type}${attrs}>${columns}${node.type === "Run" ? escapeMarkup(node.text ?? "") : (node.children ?? []).map((n) => xamlNode(n)).join("")}</${node.type}>`;
 }
 export function toXAML(doc: FlowDocument): string {
-  return xamlNode(doc.ToJSON(), true);
+  return xamlNode(materializeDocumentStyles(doc.ToJSON()), true);
 }
 export function fromXAML(xaml: string): FlowDocument {
   const root = parseMarkup(xaml, true);

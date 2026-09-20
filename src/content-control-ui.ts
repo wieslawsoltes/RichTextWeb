@@ -385,6 +385,9 @@ export function executeContentControlCommand(
                 },
               ],
       });
+  const originalStyles = JSON.stringify(engine.GetDocumentStyles());
+  nested.Engine.SetDocumentStyles(engine.GetDocumentStyles());
+  nested.Engine.ClearUndo();
   toolbar.Mode = "home";
   toolbar.Editor = nested;
   const insert = owner.createElement("div");
@@ -411,6 +414,13 @@ export function executeContentControlCommand(
   apply.onclick = () => {
     try {
       guard(info);
+      if (
+        JSON.stringify(engine.GetDocumentStyles()) !== originalStyles ||
+        JSON.stringify(nested.Engine.GetDocumentStyles()) !== originalStyles
+      )
+        throw new Error(
+          "Shared styles changed. Edit their definitions in the parent document and reopen this draft.",
+        );
       const blocks = nested.Document.ToJSON().children!;
       if (
         p.Level === "Inline" &&

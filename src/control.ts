@@ -858,6 +858,8 @@ export class RichTextBox extends HTMLElementBase {
         "find",
         "getcontentcontrols",
         "getformdata",
+        "getdocumentstyles",
+        "resolvedocumentstyle",
         "validateform",
         "selectcontentcontrol",
       ].includes(normalized)
@@ -2900,7 +2902,7 @@ export class FlowDocumentPageViewer extends FlowDocumentReader {
       const document: DocumentNode = {
         type: "FlowDocument",
         id: `page-${kind}`,
-        props: {},
+        props: { DocumentStyles: props.DocumentStyles },
         children: blocks.map(resolveFields),
       };
       reconcileDocumentDOM(

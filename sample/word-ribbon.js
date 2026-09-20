@@ -76,19 +76,26 @@ export function createDocumentRibbon({
           FontSize: 18,
           FontStyle: "Italic",
           Foreground: "#526780",
-          Margin: "20,12,20,12",
+          Margin: { Left: 20, Top: 12, Right: 20, Bottom: 12 },
         },
       };
       const props = styles[value];
       if (!props) return;
-      for (const [name, setting] of Object.entries({
-        FontFamily: "Calibri",
-        FontStyle: "Normal",
-        Foreground: "#242a33",
-        Margin: "0,0,0,12",
-        ...props,
-      }))
-        editor.Engine.SetParagraphProperty(name, setting);
+      const id = `Studio_${value}`;
+      if (!editor.Engine.GetDocumentStyles().some((s) => s.Id === id))
+        editor.Engine.SetDocumentStyle({
+          Id: id,
+          Name: value === "normal" ? "Studio body" : `Studio ${value}`,
+          Kind: "Paragraph",
+          Properties: {
+            FontFamily: "Calibri",
+            FontStyle: "Normal",
+            Foreground: "#242a33",
+            Margin: { Left: 0, Top: 0, Right: 0, Bottom: 12 },
+            ...props,
+          },
+        });
+      editor.Engine.ApplyParagraphStyle(id, true);
     });
     editor.Focus();
   };
@@ -280,10 +287,20 @@ export function createDocumentRibbon({
             ],
             { priority: 8 },
           ),
-          group("style-gallery", "Styles", [gallery], {
-            priority: 5,
-            launcher: () => openCatalog("styles"),
-          }),
+          group(
+            "style-gallery",
+            "Styles",
+            [
+              gallery,
+              t("DocumentStyles", "Manage styles", "brush"),
+              t("CreateStyleFromSelection", "Style from selection", "brush"),
+              t("ClearDirectFormatting", "Clear direct formatting", "brush"),
+            ],
+            {
+              priority: 5,
+              launcher: () => openCatalog("styles"),
+            },
+          ),
           group("editing", "Editing", [
             app("find", "Find", "search"),
             t("FindReplace", "Replace", "⇄"),
