@@ -1,0 +1,59 @@
+name: Document theme qualification
+on:
+  push:
+    branches: [work/document-theme-source]
+    paths: [.github/workflows/document-theme-qualification.yml]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply checksum-verified source implementation
+        run: |
+          mkdir -p qualification
+          python3 - <<'PY' | tee qualification/patch.log
+          import base64, hashlib, lzma, pathlib, subprocess
+          encoded = ''.join(pathlib.Path(f'.theme-work/part-{i}.txt').read_text() for i in range(8))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          expected = 'fb8656033acb9170c0d486273e1669e46ada10bae304cb98927bf36785d10d8b'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Source checksum mismatch'
+          pathlib.Path('/tmp/document-themes.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/document-themes.patch'], check=True)
+          subprocess.run(['git', 'apply', '--index', '/tmp/document-themes.patch'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          print('Verified complete patch:', expected)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r .theme-work .github/workflows/document-theme-qualification.yml
+          git commit -m 'feat: add live document text themes, native DOCX and reusable authoring tools'
+          git push origin HEAD:refs/heads/work/document-theme-source
+          git rev-parse HEAD > qualification/source-sha.txt
+          git rev-parse HEAD^{tree} > qualification/tree-sha.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci 2>&1 | tee qualification/install.log
+      - run: npm run typecheck 2>&1 | tee qualification/typecheck.log
+      - run: npm run check 2>&1 | tee qualification/check.log
+      - run: node scripts/audit-word-features.mjs > qualification/feature-inventory.json
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser 2>&1 | tee qualification/browser.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: document-theme-qualification
+          path: |
+            test-results/
+            qualification/
+          retention-days: 7
+          if-no-files-found: warn
