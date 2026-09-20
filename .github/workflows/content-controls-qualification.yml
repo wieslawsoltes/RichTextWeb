@@ -1,0 +1,94 @@
+name: Content controls qualification
+on:
+  push:
+    branches: [work/content-controls-source]
+    paths: [.form-transfer/ready.json]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply checksum-verified implementation
+        run: |
+          mkdir -p qualification
+          python3 - <<'PY' | tee qualification/patch.log
+          import base64, hashlib, json, lzma, pathlib, subprocess
+          root = pathlib.Path('.form-transfer')
+          manifest = json.loads((root / 'ready.json').read_text())
+          files = sorted(root.glob('part-*.txt'))
+          assert len(files) == manifest['parts'], 'Missing patch parts'
+          parts, bad = [], []
+          alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+          for index, file in enumerate(files):
+              assert int(file.name.split('-')[1]) == index
+              text = file.read_text()
+              expected = file.stem.rsplit('-', 1)[1]
+              def matches(value):
+                  return hashlib.sha256(value.encode()).hexdigest()[:16] == expected
+              if not matches(text):
+                  # Correct at most one transport transcription error. The full
+                  # uncompressed source SHA-256 is independently mandatory below.
+                  recovered = None
+                  for i in range(len(text) + 1):
+                      if matches(text[:i] + text[i+1:]):
+                          recovered = text[:i] + text[i+1:]
+                          break
+                      for char in alphabet:
+                          for candidate in (text[:i] + char + text[i:], text[:i] + char + text[i+1:]):
+                              if matches(candidate):
+                                  recovered = candidate
+                                  break
+                          if recovered is not None:
+                              break
+                      if recovered is not None:
+                          break
+                  if recovered is None:
+                      bad.append(file.name)
+                  else:
+                      print('Recovered transport part:', file.name, flush=True)
+                      text = recovered
+              parts.append(text)
+          print('Invalid transport parts:', bad, flush=True)
+          assert not bad, 'Transport validation failed; source not applied'
+          patch = lzma.decompress(base64.b64decode(''.join(parts), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == manifest['sha256'], 'Full patch SHA-256 mismatch'
+          print('Verified source SHA-256:', manifest['sha256'], flush=True)
+          pathlib.Path('/tmp/forms.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/forms.patch'], check=True)
+          subprocess.run(['git', 'apply', '--index', '/tmp/forms.patch'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r .form-transfer .github/workflows/content-controls-qualification.yml
+          git commit -m 'feat: add native content controls, typed forms and reusable authoring UI'
+          git push origin HEAD:refs/heads/work/content-controls-source
+          git rev-parse HEAD > qualification/source-sha.txt
+          git rev-parse HEAD^{tree} > qualification/source-tree.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci 2>&1 | tee qualification/install.log
+      - run: npm run typecheck 2>&1 | tee qualification/typecheck.log
+      - run: npm run check 2>&1 | tee qualification/check.log
+      - run: node scripts/audit-word-features.mjs > qualification/feature-inventory.json
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser 2>&1 | tee qualification/browser.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: content-controls-qualification
+          path: |
+            qualification/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
