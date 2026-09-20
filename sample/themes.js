@@ -1,7 +1,7 @@
 /** A theme-connected report built only from the public engine API. */
 export function createThemesSample(RT) {
   const document = RT.fromText(
-    "One theme, a connected document\nChange the palette and heading font without losing local choices.\nBuilt to adapt\nBody paragraphs share a theme-linked font and text color. Named styles remain independent of direct overrides.\nThis callout follows accent 2 with a light theme tint.\nFixed brand color stays violet when the theme changes.\nOpen Home → Document theme. Preview Editorial or Forest, then apply. Undo restores the entire previous theme.",
+    "One theme, a connected document\nChange the palette and heading font without losing local choices.\nBuilt to adapt\nBody paragraphs share a theme-linked font and text color. Named styles remain independent of direct overrides.\nThis callout follows accent 2 with a light theme tint.\nFixed brand color stays violet when the theme changes.\nOpen Design → Document theme. Preview Editorial or Forest, then apply. Undo restores the entire previous theme.",
   );
   document.PagePadding = new RT.Thickness(56);
   document.SetValue("Title", "Connected document themes");

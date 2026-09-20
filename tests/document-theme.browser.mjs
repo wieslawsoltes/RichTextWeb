@@ -80,12 +80,10 @@ export async function runDocumentThemeBrowserChecks(page) {
       .locator('dialog[open] select[aria-label="Document theme preset"]')
       .selectOption({ label: name });
   const titleStyle = () =>
-    e
-      .locator("h1")
-      .evaluate((n) => ({
-        color: getComputedStyle(n).color,
-        font: getComputedStyle(n).fontFamily,
-      }));
+    e.locator("h1").evaluate((n) => ({
+      color: getComputedStyle(n).color,
+      font: getComputedStyle(n).fontFamily,
+    }));
   const current = () =>
     page.evaluate(() =>
       document.getElementById("themes-check-editor").GetDocumentTheme(),
@@ -300,7 +298,7 @@ export async function runDocumentThemeBrowserChecks(page) {
       richTextStudio.loadTemplate("themes");
       richTextStudio.editor.DocumentView = "WebLayout";
       richTextStudio.workspace.SetZoom(100);
-      richTextStudio.workspace.Ribbon.selectTab("home");
+      richTextStudio.workspace.Ribbon.selectTab("design");
     });
     await page
       .locator('#word-ribbon [data-control-id="DocumentTheme"]')
@@ -335,7 +333,7 @@ export async function runDocumentThemeBrowserChecks(page) {
       "Studio",
     );
     results.push(
-      "The connected-theme sample and Home ribbon use shared theme APIs, live headings, direct overrides and undo",
+      "The connected-theme sample and Design ribbon use shared theme APIs, live headings, direct overrides and undo",
     );
   } finally {
     await page.setViewportSize(viewport);
