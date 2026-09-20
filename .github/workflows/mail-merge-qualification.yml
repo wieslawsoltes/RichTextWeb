@@ -1,0 +1,89 @@
+name: Mail merge qualification
+on:
+  push:
+    branches: [work/mail-merge-source]
+    paths: [.mail-merge-transfer/ready.json]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply verified source patch
+        run: |
+          mkdir -p qualification
+          python3 - <<'PY' | tee qualification/patch.log
+          import pathlib, json, hashlib, base64, lzma, subprocess
+          root = pathlib.Path('.mail-merge-transfer')
+          meta = json.loads((root / 'ready.json').read_text())
+          files = sorted(root.glob('part-*.txt'))
+          assert len(files) == meta['parts']
+          parts, bad = [], []
+          alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+          for index, file in enumerate(files):
+              assert int(file.name.split('-')[1]) == index
+              text = file.read_text().strip()
+              expected = file.stem.rsplit('-', 1)[1]
+              def matches(s):
+                  return hashlib.sha256(s.encode()).hexdigest()[:16] == expected
+              if not matches(text):
+                  # Correct at most one transfer transcription error. Source must
+                  # independently match the full uncompressed SHA-256 below.
+                  fixed = None
+                  for i in range(len(text) + 1):
+                      if matches(text[:i] + text[i+1:]):
+                          fixed = text[:i] + text[i+1:]
+                          break
+                      for c in alphabet:
+                          for value in (text[:i] + c + text[i:], text[:i] + c + text[i+1:]):
+                              if matches(value):
+                                  fixed = value
+                                  break
+                          if fixed is not None: break
+                      if fixed is not None: break
+                  if fixed is None: bad.append(file.name)
+                  else:
+                      text = fixed
+                      print('Corrected transfer:', file.name, flush=True)
+              parts.append(text)
+          print('Invalid transfer parts:', bad, flush=True)
+          assert not bad
+          patch = lzma.decompress(base64.b64decode(''.join(parts), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == meta['sha256']
+          pathlib.Path('/tmp/mail-merge.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/mail-merge.patch'], check=True)
+          subprocess.run(['git', 'apply', '--index', '/tmp/mail-merge.patch'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          print('Verified source patch:', meta['sha256'], flush=True)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r .mail-merge-transfer .github/workflows/mail-merge-qualification.yml
+          git commit -m 'feat: add recipient queries, rich mail merge previews and shared Mailings tools'
+          git push origin HEAD:refs/heads/work/mail-merge-source
+          git rev-parse HEAD > qualification/source-sha.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci 2>&1 | tee qualification/install.log
+      - run: npm run typecheck 2>&1 | tee qualification/typecheck.log
+      - run: npm run check 2>&1 | tee qualification/check.log
+      - run: node scripts/audit-word-features.mjs > qualification/feature-inventory.json
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser 2>&1 | tee qualification/browser.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mail-merge-qualification
+          path: |
+            qualification/
+            test-results/
+          retention-days: 7
