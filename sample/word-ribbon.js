@@ -566,6 +566,15 @@ export function createDocumentRibbon({
         "developer",
         "Developer",
         [
+          group("content-controls", "Content controls & forms", [
+            t("InsertContentControl", "Content control", "▣", large),
+            t("ContentControlProperties", "Properties", "⚙"),
+            t("EditContentControl", "Edit value", "edit"),
+            t("RemoveContentControl", "Remove control", "delete"),
+            t("FormData", "Form data", "{}", { mutates: false }),
+            t("FillForm", "Fill form", "table"),
+            t("ValidateForm", "Validate", "✓", { mutates: false }),
+          ]),
           group("source", "Document source", [
             app("source-json", "JSON", "{}", { ...large, mutates: false }),
             app("source-xaml", "XAML", "<>", { ...large, mutates: false }),

@@ -1,3 +1,4 @@
+import { createFormsSample } from "./forms.js";
 import * as RT from "../src/index.ts";
 import { createWordWorkspace } from "./word-workspace.js";
 import { openPDFTools } from "./pdf-tools.js";
@@ -135,6 +136,14 @@ function updateReadOnlyControls() {
   if ($("source-code")) $("source-code").readOnly = locked;
 }
 const templates = {
+  forms: {
+    name: "Fillable project brief",
+    description:
+      "Typed content controls, dates, choices, rich drafts, required values and native DOCX forms.",
+    build() {
+      return createFormsSample(RT);
+    },
+  },
   automation: {
     name: "Word authoring & automation",
     description:

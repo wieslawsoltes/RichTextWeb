@@ -1,3 +1,4 @@
+import { executeContentControlCommand } from "./content-control-ui.js";
 import type { TableSortOptions } from "./table-grid.js";
 import type { CaptionOptions } from "./document-features.js";
 import { pageSettings } from "./pagination.js";
@@ -52,6 +53,13 @@ const home: Tool[] = [
   { label: "Clear", command: "ClearFormatting" },
 ];
 const insert: Tool[] = [
+  { label: "Content control", command: "InsertContentControl" },
+  { label: "Control properties", command: "ContentControlProperties" },
+  { label: "Edit control", command: "EditContentControl" },
+  { label: "Remove control", command: "RemoveContentControl" },
+  { label: "Form data", command: "FormData" },
+  { label: "Fill form", command: "FillForm" },
+  { label: "Validate form", command: "ValidateForm" },
   { label: "Equation", command: "Equation" },
   { label: "Symbol", command: "Symbol" },
   { label: "Table", command: "Table" },
@@ -159,6 +167,26 @@ export class RichTextToolbar extends HTMLElementBase {
         );
       }
     if (value) {
+      const inputRejected = (event: Event) => {
+        this.status = String((event as CustomEvent).detail.message);
+        this.Refresh();
+      };
+      value.addEventListener("inputrejected", inputRejected);
+      this.subscriptions.push(() =>
+        value.removeEventListener("inputrejected", inputRejected),
+      );
+      const controlHandler = (event: Event) => {
+        if (event.defaultPrevented) return;
+        event.preventDefault();
+        this.executeSafe(
+          "EditContentControl",
+          (event as CustomEvent).detail.id,
+        );
+      };
+      value.addEventListener("contentcontroleditrequest", controlHandler);
+      this.subscriptions.push(() =>
+        value.removeEventListener("contentcontroleditrequest", controlHandler),
+      );
       const storyHandler = (event: Event) => {
         if (event.defaultPrevented) return;
         event.preventDefault();
@@ -340,9 +368,14 @@ export class RichTextToolbar extends HTMLElementBase {
       .forEach((control) => {
         control.disabled =
           locked &&
-          !["PagePreview", "ReviewChanges", "Copy", "WordCount"].includes(
-            control.dataset.command ?? "",
-          );
+          ![
+            "PagePreview",
+            "ReviewChanges",
+            "Copy",
+            "WordCount",
+            "FormData",
+            "ValidateForm",
+          ].includes(control.dataset.command ?? "");
         if (control.dataset.command === "Undo")
           control.disabled = locked || !engine?.CanUndo;
         if (control.dataset.command === "Redo")
@@ -393,7 +426,14 @@ export class RichTextToolbar extends HTMLElementBase {
     if (!editor) return false;
     if (
       editor.IsReadOnly &&
-      !["PagePreview", "ReviewChanges", "Copy", "WordCount"].includes(command)
+      ![
+        "PagePreview",
+        "ReviewChanges",
+        "Copy",
+        "WordCount",
+        "FormData",
+        "ValidateForm",
+      ].includes(command)
     )
       return false;
     const engine = editor.Engine,
@@ -405,6 +445,16 @@ export class RichTextToolbar extends HTMLElementBase {
       this.Refresh();
       return result;
     };
+    if (
+      executeContentControlCommand(command, parameter, {
+        Editor: editor,
+        IsCurrent: () => this.editor === editor,
+        CreateDialog: () => this.createDialog(),
+        Prompt: (title, fields, submit) => this.prompt(title, fields, submit),
+        Refresh: () => this.Refresh(),
+      })
+    )
+      return true;
     switch (command) {
       case "Copy":
       case "Cut":

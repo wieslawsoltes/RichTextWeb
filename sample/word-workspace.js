@@ -68,6 +68,8 @@ const passive = new Set([
   "pdf-tools",
   "PagePreview",
   "WordCount",
+  "FormData",
+  "ValidateForm",
   "ReviewChanges",
   "Copy",
   "collaboration-demo",
