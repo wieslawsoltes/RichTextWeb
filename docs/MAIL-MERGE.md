@@ -114,7 +114,7 @@ The table formula continuation also keys containing-table and grid caches by obj
 
 ## Verification
 
-`tests/mail-merge.test.ts` adds 53 Node regressions (732 total at this increment), including native DOCX tests that remove RichTextWeb metadata. Eight groups in `tests/mail-merge.browser.mjs` cover shared dialogs, local input, bounded rows, diagnostics, stale/read-only targets, mobile geometry, the real Mailings ribbon and generated output picker. Test presence is not a pass: consult the exact commit's CI and retained browser evidence.
+`tests/mail-merge.test.ts` and `tests/mail-merge-validation.test.ts` add 58 Node regressions (737 total at this increment), including native DOCX tests that remove RichTextWeb metadata. Eight groups in `tests/mail-merge.browser.mjs` cover shared dialogs, local input, bounded rows, diagnostics, stale/read-only targets, mobile geometry, the real Mailings ribbon and generated output picker. Test presence is not a pass: consult the exact commit's CI and retained browser evidence.
 
 ```sh
 npm run typecheck
