@@ -17,6 +17,7 @@ export class DocumentStorySession {
   private readonly parent: FlowDocument;
   private readonly original: string;
   private readonly originalStyles: string;
+  private readonly originalTheme: string;
   private closed = false;
   constructor(
     private readonly owner: RichTextEngine,
@@ -34,6 +35,7 @@ export class DocumentStorySession {
     // Font properties are inherited from the main document without copying its page stories/review metadata.
     const properties = this.parent.ToJSON().props;
     this.originalStyles = JSON.stringify(properties.DocumentStyles ?? []);
+    this.originalTheme = JSON.stringify(properties.DocumentTheme ?? null);
     for (const name of [
       "FontFamily",
       "FontSize",
@@ -43,6 +45,7 @@ export class DocumentStorySession {
       "FlowDirection",
       "Language",
       "DocumentStyles",
+      "DocumentTheme",
     ])
       if (properties[name] !== undefined) root.props[name] = properties[name];
     root.children = structuredClone(Array.isArray(content) ? content : []);
@@ -61,7 +64,9 @@ export class DocumentStorySession {
         JSON.stringify(this.target().props[this.Kind] ?? null) !==
           this.original ||
         JSON.stringify(this.parent.GetValue("DocumentStyles") ?? []) !==
-          this.originalStyles
+          this.originalStyles ||
+        JSON.stringify(this.parent.GetValue("DocumentTheme") ?? null) !==
+          this.originalTheme
       );
     } catch {
       return true;
@@ -75,10 +80,12 @@ export class DocumentStorySession {
       );
     if (
       JSON.stringify(this.Document.GetValue("DocumentStyles") ?? []) !==
-      this.originalStyles
+        this.originalStyles ||
+      JSON.stringify(this.Document.GetValue("DocumentTheme") ?? null) !==
+        this.originalTheme
     )
       throw new Error(
-        "Edit shared style definitions in the parent document, then reopen this story. Applying existing styles is supported in the draft.",
+        "Edit shared style/theme definitions in the parent document, then reopen this story. Applying existing styles is supported in the draft.",
       );
     const children = this.Document.ToJSON().children ?? [];
     const changed =

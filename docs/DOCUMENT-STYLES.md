@@ -110,3 +110,7 @@ node scripts/audit-word-features.mjs > feature-inventory.json
 ```
 
 Primary comparison targets: [Microsoft style authoring](https://support.microsoft.com/en-us/word/customize-or-create-new-styles), [based-on semantics](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.basedon?view=openxml-3.0.1), [following paragraph styles](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.nextparagraphstyle?view=openxml-3.0.1) and [Word toggle-property notes](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/f7130225-2368-48f3-acae-a9d278d0fb25). These are comparison references, not interoperability certification.
+
+## Theme-linked styles
+
+The [document-theme continuation](DOCUMENT-THEMES.md) adds symbolic major/minor font and color-scheme references. The shared style editor exposes theme selectors and modifiers, previews resolved values, and preserves links during ordinary definition edits. Capturing consistently linked selection formatting retains that reference; direct literal overrides remain fixed. This does not complete table/list/linked styles or script/effect/typography equivalence.

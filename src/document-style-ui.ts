@@ -1,3 +1,14 @@
+import {
+  resolveThemeValue,
+  themeColor,
+  themeFont,
+  parseThemeColor,
+  parseThemeFont,
+  themeColorSlots,
+  themeColorRoles,
+  type ThemeColorName,
+  type ThemeFontRole,
+} from "./document-theme.js";
 import type { RichTextBox } from "./control.js";
 import {
   characterStyleProperties,
@@ -165,7 +176,10 @@ export function executeDocumentStyleCommand(
     for (const key of kind === "Paragraph"
       ? paragraphStyleProperties
       : characterStyleProperties) {
-      const value = style?.Properties[key];
+      const raw = style?.Properties[key];
+      const reference =
+        key === "FontFamily" ? parseThemeFont(raw) : parseThemeColor(raw);
+      const value = reference ? reference.Fallback : raw;
       fields.push({
         name: key,
         label:
@@ -188,6 +202,43 @@ export function executeDocumentStyleCommand(
             ? { type: "number" }
             : {}),
       });
+      if (key === "FontFamily")
+        fields.push({
+          name: key + "Theme",
+          label: "Font theme link",
+          value: parseThemeFont(raw)?.Font ?? "",
+          options: [
+            { Value: "", Label: "Literal font / inherit" },
+            "Major",
+            "Minor",
+          ],
+        });
+      if (["Foreground", "Background", "BorderBrush"].includes(key)) {
+        const color = parseThemeColor(raw);
+        fields.push(
+          {
+            name: key + "Theme",
+            label: key + " theme link",
+            value: color?.Color ?? "",
+            options: [
+              { Value: "", Label: "Literal color / inherit" },
+              ...new Set([...themeColorRoles, ...themeColorSlots]),
+            ],
+          },
+          {
+            name: key + "Tint",
+            label: key + " tint byte (blank for none)",
+            value: color?.Tint === undefined ? "" : String(color.Tint),
+            type: "number",
+          },
+          {
+            name: key + "Shade",
+            label: key + " shade byte (blank for none)",
+            value: color?.Shade === undefined ? "" : String(color.Shade),
+            type: "number",
+          },
+        );
+      }
     }
     host.Prompt(
       style ? "Modify document style" : `New ${kind.toLowerCase()} style`,
@@ -218,6 +269,34 @@ export function executeDocumentStyleCommand(
                   ? JSON.parse(v)
                   : v;
           }
+          if (data.FontFamilyTheme)
+            properties.FontFamily = themeFont(
+              data.FontFamilyTheme as ThemeFontRole,
+              data.FontFamily?.trim() || "Arial",
+            );
+          for (const key of ["Foreground", "Background", "BorderBrush"])
+            if (data[key + "Theme"]) {
+              const modifiers = {
+                ...(data[key + "Tint"]?.trim()
+                  ? { Tint: Number(data[key + "Tint"]) }
+                  : {}),
+                ...(data[key + "Shade"]?.trim()
+                  ? { Shade: Number(data[key + "Shade"]) }
+                  : {}),
+              };
+              const name = data[key + "Theme"] as ThemeColorName;
+              const fallback =
+                data[key]?.trim() ||
+                resolveThemeValue(
+                  key,
+                  themeColor(name, modifiers),
+                  engine.GetDocumentTheme(),
+                );
+              properties[key] = themeColor(name, {
+                ...modifiers,
+                Fallback: fallback,
+              });
+            }
           const next: DocumentStyle = {
             Id: data.id,
             Name: data.name,
@@ -263,6 +342,8 @@ export function executeDocumentStyleCommand(
   const refresh = () => {
     const s = selected(),
       p = s ? engine.ResolveDocumentStyle(s.Id) : {};
+    for (const key of ["FontFamily", "Foreground", "Background"])
+      p[key] = resolveThemeValue(key, p[key], engine.GetDocumentTheme());
     preview.style.fontFamily = p.FontFamily ?? "";
     preview.style.fontSize = `${Math.min(p.FontSize ?? 18, 48)}px`;
     preview.style.fontWeight = p.FontWeight ?? "";

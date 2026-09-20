@@ -80,6 +80,14 @@ Baseline: `ada9116828a03a24bf73a3267722462825467d90` (#25, 576 Node tests). [DOC
 
 The continuation adds **56 Node regressions (632 total)** and **eight browser groups (141 total when the full suite passes)**. Local typecheck, library/demo builds and Node tests pass. Local Chromium navigation is blocked by policy; exact-commit CI is required for browser, package, native Windows and Blazor evidence. No Word desktop visual/open-save qualification is claimed. Table/list/linked styles, themes, latent/template styles, advanced typography, numbering integration and comprehensive native toggle semantics remain.
 
+## Document-theme continuation
+
+`document-theme.ts` adds validated twelve-slot RGB palettes, one-hop semantic color mapping, Latin major/minor font roles, symbolic tokens and HSL tint/shade resolution. The model, engine, selection queries and renderer resolve references below direct formatting without rewriting canonical values. Style capture retains homogeneous theme references; theme updates, detach, undo and story-draft conflicts use the shared engine. `document-theme-ui.ts` supplies preview/customization and selection tools, and the style manager exposes theme links. Home and the new `themes` sample use public APIs.
+
+`document-theme-docx.ts` and `formats-docx.ts` implement native theme parts, mappings, Latin font and foreground/shading references, including table-cell shading. Native tests remove private metadata. Theme/settings/relationship digests invalidate relevant stale snapshots; this is not exhaustive cross-part integrity. Missing/malformed schemes and unsupported script/effect semantics produce explicit fallback warnings. External theme links are inert.
+
+The increment adds **47 Node regressions (679 total)** and **seven browser groups (148 when the full suite passes)**. See [DOCUMENT-THEMES.md](DOCUMENT-THEMES.md) for exact APIs, reproduction, rounding qualification and acceptance limits. Exact-commit CI—not test presence—defines browser/package/native-host pass status. Full Word script/font selection, embedded fonts, effects/drawing themes, native table/border themes, template organizers, package-wide snapshot integrity and Word visual/open-save qualification remain.
+
 ## Prioritized remaining implementation work
 
 <!-- prettier-ignore -->
@@ -88,7 +96,7 @@ The continuation adds **56 Node regressions (632 total)** and **eight browser gr
 | P0 | Native interoperability corpus | Versioned DOCX fixtures without private metadata; import/edit/export and Word open/save/reopen comparisons covering every implemented feature. Publish exact losses and render diffs. |
 | P0 | Incremental typesetting | Fragment long tables/sections, invalidate dependent regions, resolve anchor/footnote/column interactions and section page geometry. Verify bounded realized content, large-document edit latency and stable selections without complete-body remeasurement. |
 | P0 | Field dependency scheduler | Stable field graph across stories, nested instructions, cycle diagnostics, locked dependencies, sequence/reference/TOC/page fixed points and incremental invalidation. Updating a caption must update references/index/page caches deterministically in one bounded operation. |
-| P1 | Remaining styles, themes and lists | Named paragraph/character styles, based-on/next/default roles and shared management are implemented above. Add table/list/linked styles, themes/font-color maps, latent/template styles, complete native toggle/spacing semantics and style-scoped multilevel numbering. Qualify native Word open/save and visual fidelity. |
+| P1 | Remaining styles, themes and lists | Named paragraph/character styles, based-on/next/default roles and shared management are implemented above. Text palettes/mappings and Latin font schemes are also implemented in the theme continuation. Add table/list/linked styles, script/effect/drawing themes, latent/template styles, complete native toggle/spacing semantics and style-scoped multilevel numbering. Qualify native Word open/save and visual fidelity. |
 | P1 | Remaining forms and protection | Six inline/block SDT kinds, placeholders, local validation and independent editing locks are implemented above. Add picture/repeating/building-block controls, custom XML binding, restricted editable regions and host permission integration; qualify native Word round-trips and concurrent typed-control conflicts. |
 | P1 | References and long documents | Chapter captions, indexes, authorities, citations/bibliography styles, complete note numbering/continuation and advanced TOC switches. Add editable reusable panels, not just export metadata. |
 | P1 | Drawing and media | Shape/path model, connectors, grouping, DrawingML transforms, image crop/effects, charts and diagram authoring; deterministic wrap/anchor integration and native interchange. |
@@ -106,7 +114,7 @@ The baseline passed 405 Node tests. The authoring increment plus the continuatio
 
 Reproduce with `npm run typecheck`, `npm run check`, `npx playwright install --with-deps chromium`, and `npm run test:browser`. The implementation environment blocks browser navigation; browser/package-consumer results are obtained from GitHub Actions. No Microsoft Word desktop visual comparison was performed for this increment.
 
-The current inventory contains 48 top-level source modules. Generate a machine-readable declaration inventory with `node scripts/audit-word-features.mjs > feature-inventory.json`. It lists all top-level source files, declared exports/public class members and test files; it intentionally does not infer behavioral coverage from matching names. Keep this audit and the compatibility matrix current when completing a workstream, and attach fixtures plus checked-commit evidence before changing a boundary to qualified.
+The current inventory contains 51 top-level source modules. Generate a machine-readable declaration inventory with `node scripts/audit-word-features.mjs > feature-inventory.json`. It lists all top-level source files, declared exports/public class members and test files; it intentionally does not infer behavioral coverage from matching names. Keep this audit and the compatibility matrix current when completing a workstream, and attach fixtures plus checked-commit evidence before changing a boundary to qualified.
 
 ### Primary Word behavior references
 

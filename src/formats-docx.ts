@@ -1,4 +1,13 @@
 import {
+  documentThemeXML,
+  themeColorMappingXML,
+  themeFontXML,
+  themeColorXML,
+  readDocumentTheme,
+  readThemeRunProperties,
+} from "./document-theme-docx.js";
+import { validateDocumentTheme } from "./document-theme.js";
+import {
   documentStylesXML,
   readDocumentStyles,
 } from "./document-style-docx.js";
@@ -436,6 +445,17 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
         `<Override PartName="/rtw-preserved/${esc(part.Name)}" ContentType="${esc(part.ContentType)}"/>`,
       );
   }
+  const documentTheme =
+    root.props.DocumentTheme == null
+      ? null
+      : validateDocumentTheme(root.props.DocumentTheme);
+  if (documentTheme) {
+    zip.file("word/theme/theme1.xml", documentThemeXML(documentTheme));
+    relationship("theme", "theme/theme1.xml");
+    extraTypes.push(
+      '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
+    );
+  }
   const runProperties = (props: Record<string, any>) => {
     let xml = props.CharacterStyleId
       ? `<w:rStyle w:val="${esc(props.CharacterStyleId)}"/>`
@@ -454,14 +474,17 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     }
     if (props.BaselineAlignment)
       xml += `<w:vertAlign w:val="${props.BaselineAlignment === "Superscript" ? "superscript" : props.BaselineAlignment === "Subscript" ? "subscript" : "baseline"}"/>`;
-    if (props.FontFamily)
-      xml += `<w:rFonts w:ascii="${esc(props.FontFamily)}" w:hAnsi="${esc(props.FontFamily)}" w:eastAsia="${esc(props.FontFamily)}"/>`;
+    if (props.FontFamily) xml += themeFontXML(props.FontFamily, documentTheme);
     if (Number(props.FontSize) > 0)
       xml += `<w:sz w:val="${Math.round(Number(props.FontSize) * 1.5)}"/>`;
     const color = hexColor(props.Foreground),
       background = hexColor(props.Background);
-    if (color) xml += `<w:color w:val="${color}"/>`;
-    if (background) xml += `<w:shd w:fill="${background}"/>`;
+    xml +=
+      themeColorXML("Foreground", props.Foreground, documentTheme) ??
+      (color ? `<w:color w:val="${color}"/>` : "");
+    xml +=
+      themeColorXML("Background", props.Background, documentTheme) ??
+      (background ? `<w:shd w:fill="${background}"/>` : "");
     return xml ? "<w:rPr>" + xml + "</w:rPr>" : "";
   };
   const reviews: any[] = Array.isArray(root.props.Annotations)
@@ -1158,9 +1181,14 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
                       : "") +
                     (span > 1 ? `<w:gridSpan w:val="${span}"/>` : "") +
                     (rowSpan > 1 ? '<w:vMerge w:val="restart"/>' : "") +
-                    (hexColor(cell.props.Background)
-                      ? `<w:shd w:fill="${hexColor(cell.props.Background)}"/>`
-                      : "") +
+                    (themeColorXML(
+                      "Background",
+                      cell.props.Background,
+                      documentTheme,
+                    ) ??
+                      (hexColor(cell.props.Background)
+                        ? `<w:shd w:fill="${hexColor(cell.props.Background)}"/>`
+                        : "")) +
                     "</w:tcPr>" +
                     cellBody +
                     ((cell.children ?? []).at(-1)?.type === "Table"
@@ -1340,12 +1368,13 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
   if (
     pageStoryVariantEnabled(root.props, "EvenPage") ||
     root.props.TrackChanges ||
-    documentVariables.length
+    documentVariables.length ||
+    documentTheme
   ) {
     relationship("settings", "settings.xml");
     zip.file(
       "word/settings.xml",
-      `<w:settings xmlns:w="${NS}">${pageStoryVariantEnabled(root.props, "EvenPage") ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}${documentVariables.length ? `<w:docVars>${documentVariables.map(([name, value]) => `<w:docVar w:name="${esc(name)}" w:val="${esc(String(value))}"/>`).join("")}</w:docVars>` : ""}</w:settings>`,
+      `<w:settings xmlns:w="${NS}">${themeColorMappingXML(documentTheme)}${pageStoryVariantEnabled(root.props, "EvenPage") ? "<w:evenAndOddHeaders/>" : ""}${root.props.TrackChanges ? "<w:trackRevisions/>" : ""}${documentVariables.length ? `<w:docVars>${documentVariables.map(([name, value]) => `<w:docVar w:name="${esc(name)}" w:val="${esc(String(value))}"/>`).join("")}</w:docVars>` : ""}</w:settings>`,
     );
     extraTypes.push(
       '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>',
@@ -1361,7 +1390,8 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     ) ||
       hasFloatingStory(root) ||
       contentControls.length > 0 ||
-      namedStyles.length > 0) &&
+      namedStyles.length > 0 ||
+      documentTheme !== null) &&
     globalThis.crypto?.subtle
   ) {
     const mainXML = await zip.file("word/document.xml")!.async("string");
@@ -1525,7 +1555,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${[...mediaTypes].map((ext) => `<Default Extension="${ext}" ContentType="image/${ext === "jpg" ? "jpeg" : ext}"/>`).join("")}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>${numberings.length ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' : ""}${extraTypes.join("")}</Types>`,
   );
   const extension = zip.file("customXml/richtextweb-review.xml");
-  if (extension && namedStyles.length) {
+  if (extension) {
     const stylesDigest = await mainPartDigest(
       await zip.file("word/styles.xml")!.async("string"),
     );
@@ -1533,7 +1563,7 @@ export async function toDOCX(document: FlowDocument): Promise<Uint8Array> {
       "customXml/richtextweb-review.xml",
       (await extension.async("string")).replace(
         ' version="1"',
-        ` stylesSha256="${stylesDigest}" version="1"`,
+        ` stylesSha256="${stylesDigest}" themeSha256="${await mainPartDigest((await zip.file("word/theme/theme1.xml")?.async("string")) ?? "")}" settingsSha256="${await mainPartDigest((await zip.file("word/settings.xml")?.async("string")) ?? "")}" relationshipsSha256="${await mainPartDigest(await zip.file("word/_rels/document.xml.rels")!.async("string"))}" version="1"`,
       ),
     );
   }
@@ -1638,6 +1668,23 @@ export async function fromDOCX(
       : dir + fallback;
   };
   const stylesPart = await read(findPart("styles", "styles.xml"));
+  const themeRelationship = relationshipNodes.find((r) =>
+    r.attrs.Type?.endsWith("/theme"),
+  );
+  // External theme relationships are inert; do not substitute an unrelated fallback part.
+  const themePart =
+    themeRelationship?.attrs.TargetMode === "External"
+      ? ""
+      : await read(findPart("theme", "theme/theme1.xml"));
+  const settingsPart = await read(findPart("settings", "settings.xml"));
+  const importedTheme = readDocumentTheme(
+    parseOfficeXML(themePart),
+    parseOfficeXML(settingsPart),
+  );
+  if (themeRelationship?.attrs.TargetMode === "External")
+    importedTheme.Warnings.push(
+      "External document theme relationships are not fetched; native text fallback formatting retained.",
+    );
   const styleRoot = parseOfficeXML(stylesPart),
     numberingRoot = parseOfficeXML(
       await read(findPart("numbering", "numbering.xml")),
@@ -1684,6 +1731,7 @@ export async function fromDOCX(
     if (/^[a-f0-9]{6}$/i.test(color ?? "")) p.Foreground = "#" + color;
     const fill = child(pr, "w:shd")?.attrs["w:fill"];
     if (/^[a-f0-9]{6}$/i.test(fill ?? "")) p.Background = "#" + fill;
+    readThemeRunProperties(pr, p, importedTheme.Theme, importedTheme.Warnings);
     const highlight = val(child(pr, "w:highlight"));
     if (highlight && highlight !== "none") p.Background = highlight;
     return p;
@@ -2547,6 +2595,13 @@ export async function fromDOCX(
             const fill = child(pr, "w:shd")?.attrs["w:fill"];
             if (/^[a-f0-9]{6}$/i.test(fill ?? ""))
               props.Background = "#" + fill;
+            if (pr)
+              readThemeRunProperties(
+                pr,
+                props,
+                importedTheme.Theme,
+                importedTheme.Warnings,
+              );
             const oldOffset = importOffset,
               oldParagraphs = importParagraphs,
               oldReview = recordReview;
@@ -2668,6 +2723,7 @@ export async function fromDOCX(
   );
   const sectPr = child(body, "w:sectPr");
   Object.assign(defaults, sectionProps(sectPr));
+  if (importedTheme.Theme) defaults.DocumentTheme = importedTheme.Theme;
   if (importedStyles.Styles.length)
     defaults.DocumentStyles = importedStyles.Styles;
   if (importedStyles.Warnings.length)
@@ -2819,9 +2875,7 @@ export async function fromDOCX(
   }
   relationships = bodyRelationships;
   images = bodyImages;
-  const settings = parseOfficeXML(
-    await read(findPart("settings", "settings.xml")),
-  );
+  const settings = parseOfficeXML(settingsPart);
   const variables: Record<string, string> = Object.create(null);
   for (const item of descendants(settings, "w:docVar"))
     if (item.attrs["w:name"] !== undefined)
@@ -3025,7 +3079,16 @@ export async function fromDOCX(
       review?.attrs.version === "1" &&
       review.attrs.mainSha256 === (await mainPartDigest(main)) &&
       (!review.attrs.stylesSha256 ||
-        review.attrs.stylesSha256 === (await mainPartDigest(stylesPart)))
+        review.attrs.stylesSha256 === (await mainPartDigest(stylesPart))) &&
+      (!review.attrs.themeSha256 ||
+        review.attrs.themeSha256 === (await mainPartDigest(themePart))) &&
+      (!review.attrs.settingsSha256 ||
+        review.attrs.settingsSha256 === (await mainPartDigest(settingsPart))) &&
+      (!review.attrs.relationshipsSha256 ||
+        review.attrs.relationshipsSha256 ===
+          (await mainPartDigest(
+            await read(dir + "_rels/" + filename + ".rels"),
+          )))
     ) {
       const payload = review.children.find((n) => n.name === "rtw:document");
       if (payload) {
@@ -3041,6 +3104,8 @@ export async function fromDOCX(
       }
     }
   }
+  if (importedTheme.Warnings.length)
+    defaults.DocxThemeImportWarnings = importedTheme.Warnings;
   if (contentControlWarnings.length)
     defaults.ContentControlImportWarnings = contentControlWarnings;
   const nativeRoot = node("FlowDocument", documentBlocks, defaults);

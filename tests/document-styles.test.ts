@@ -600,7 +600,7 @@ test("style from selection does not freeze the automatic line-height sentinel as
   e.ApplyParagraphStyle("Captured");
   assert.equal(p(e).GetValueSource("LineHeight").BaseValueSource, "Default");
 });
-test("unsupported native theme indirection retains supported setters and warns", async () => {
+test("missing native theme retains supported setters and reports theme fallback", async () => {
   const e = make();
   const { zip } = await native(e);
   zip.file(
@@ -615,7 +615,7 @@ test("unsupported native theme indirection retains supported setters and warns",
   );
   assert.equal(again.ResolveDocumentStyle("Body").FontSize, 16);
   assert(
-    again.Document.GetValue("DocxStyleImportWarnings").some((w: string) =>
+    again.Document.GetValue("DocxThemeImportWarnings").some((w: string) =>
       w.includes("Theme"),
     ),
   );

@@ -1,3 +1,4 @@
+import { resolveThemeValue } from "./document-theme.js";
 import { nodeStyleProperties } from "./document-styles.js";
 import { validateContentControlProperties } from "./content-controls.js";
 import { renderEquation, equationOptions } from "./equations.js";
@@ -469,6 +470,13 @@ export function renderDocument(
       ),
       ...current.props,
     };
+    for (const key of ["FontFamily", "Foreground", "Background", "BorderBrush"])
+      if (props[key] !== undefined)
+        props[key] = resolveThemeValue(
+          key,
+          props[key],
+          node.props.DocumentTheme,
+        );
     const isParagraph = current.type === "Paragraph";
     const isAtomicBlock = current.type === "BlockUIContainer";
     if (isParagraph || isAtomicBlock) {
@@ -702,7 +710,10 @@ export function renderDocument(
           {
             type: "FlowDocument",
             id: `${current.id}-story`,
-            props: { DocumentStyles: node.props.DocumentStyles },
+            props: {
+              DocumentStyles: node.props.DocumentStyles,
+              DocumentTheme: node.props.DocumentTheme,
+            },
             children: current.children || [],
           },
           owner,

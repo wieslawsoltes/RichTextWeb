@@ -1,3 +1,4 @@
+import { createThemesSample } from "./themes.js";
 import { createStylesSample } from "./styles.js";
 import { createFormsSample } from "./forms.js";
 import * as RT from "../src/index.ts";
@@ -137,6 +138,14 @@ function updateReadOnlyControls() {
   if ($("source-code")) $("source-code").readOnly = locked;
 }
 const templates = {
+  themes: {
+    name: "Connected document themes",
+    description:
+      "Live palette and font schemes, theme-linked styles, direct overrides and native DOCX themes.",
+    build() {
+      return createThemesSample(RT);
+    },
+  },
   styles: {
     name: "Named document styles",
     description:
