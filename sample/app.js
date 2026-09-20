@@ -147,7 +147,7 @@ const templates = {
         <tr><td>Editing</td><td>2</td><td>75</td><td>CALC_EDIT</td></tr>
         <tr><td>Design</td><td>3</td><td>90</td><td>CALC_DESIGN</td></tr>
         <tr><td>Total</td><td></td><td></td><td>CALC_TOTAL</td></tr>
-        </tbody></table><p>Project: PROJECT_NAME. Approval: APPROVAL.</p><p>Linked total: ESTIMATE_REF</p>`);
+        </tbody></table><p>Project: PROJECT_NAME. Budget: BUDGET_AMOUNT. Approval: APPROVAL.</p><p>Linked total: ESTIMATE_REF</p>`);
       d.SetValue("Title", "Word authoring & automation");
       d.SetValue("CustomProperties", {
         Project: "Document Studio",
@@ -158,25 +158,31 @@ const templates = {
       engine.Select(d.Text.indexOf("Description"));
       engine.SetTableHeaderRows(1);
       features.SetDocumentVariable("Budget", 500);
-      let totalFieldId;
+      const fieldIds = new Map();
       for (const [marker, code] of [
         ["CALC_EDIT", '= B2*C2 \\# "#,##0.00"'],
         ["CALC_DESIGN", '= PRODUCT(B3:C3) \\# "#,##0.00"'],
         ["CALC_TOTAL", '= SUM(ABOVE) \\# "#,##0.00"'],
         ["PROJECT_NAME", "DOCPROPERTY Project"],
-        ["APPROVAL", 'IF Budget >= 420 "Within budget" "Review estimate"'],
+        ["BUDGET_AMOUNT", 'DOCVARIABLE Budget \\# "0.00"'],
+        [
+          "APPROVAL",
+          'IF BudgetAmount >= EstimateTotal "Within budget" "Review estimate"',
+        ],
       ]) {
         const start = d.Text.indexOf(marker);
         engine.Select(start, start + marker.length);
         const id = features.InsertFieldCode(code);
-        if (marker === "CALC_TOTAL") totalFieldId = id;
+        fieldIds.set(marker, id);
       }
-      const totalField = d.FindById(totalFieldId);
-      engine.Select(
-        totalField.ContentStart.Offset,
-        totalField.ContentEnd.Offset,
-      );
-      engine.AddBookmark("EstimateTotal");
+      for (const [marker, name] of [
+        ["CALC_TOTAL", "EstimateTotal"],
+        ["BUDGET_AMOUNT", "BudgetAmount"],
+      ]) {
+        const target = d.FindById(fieldIds.get(marker));
+        engine.Select(target.ContentStart.Offset, target.ContentEnd.Offset);
+        engine.AddBookmark(name);
+      }
       const referenceStart = d.Text.indexOf("ESTIMATE_REF");
       engine.Select(referenceStart, referenceStart + "ESTIMATE_REF".length);
       features.InsertFieldCode("REF EstimateTotal");
