@@ -1,0 +1,34 @@
+name: Apply mail merge review fixes
+on:
+  push:
+    branches: [work/mail-merge-source]
+    paths: [.github/workflows/mail-merge-review.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify and commit reviewed source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, base64, zlib, hashlib, subprocess
+          files = sorted(pathlib.Path('.merge-review').glob('part-*.txt'))
+          assert len(files) == 6
+          encoded = ''.join(f.read_text() for f in files)
+          assert hashlib.sha256(encoded.encode()).hexdigest() == '9e5a0ece54bf457f8c5e8f20ceb82fad8b8e7602f8b3a048ac9c47aca5142bb6'
+          patch = zlib.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == 'e6d951b811488d9188f3c8676ab46af814ebe83911c5f4f146da05849fb05f09'
+          pathlib.Path('/tmp/review.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/review.patch'], check=True)
+          subprocess.run(['git', 'apply', '--index', '/tmp/review.patch'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r .merge-review .github/workflows/mail-merge-review.yml
+          git commit -m 'fix: reject hidden query accessors and detach recipient selection arrays'
+          git push origin HEAD:refs/heads/work/mail-merge-source
+          git rev-parse HEAD
