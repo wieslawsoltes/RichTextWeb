@@ -1,0 +1,20 @@
+name: Word resume workspace
+on:
+  push:
+    branches: [feat/word-authoring-audit]
+    paths: [.github/workflows/word-resume-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8d49756c55cfa49cb41cc43ce60dd8cd529f2403
+      - run: git archive --format=tar.gz -o word-pr22-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v7
+        with:
+          name: word-pr22-source
+          path: word-pr22-source.tar.gz
+          retention-days: 3
