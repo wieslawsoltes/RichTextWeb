@@ -932,6 +932,10 @@ export class DocumentFeatures {
         for (const change of result.TextChanges) {
           if (offset < change.Start) break;
           const finish = change.Start + change.RemovedLength;
+          // Leading boundaries stay before nonempty fields, including range ends.
+          // Only carets strictly inside a replaced result follow its trailing edge.
+          if (offset === change.Start && change.RemovedLength > 0)
+            return change.Start + delta;
           if (offset >= finish)
             delta += change.InsertedLength - change.RemovedLength;
           else
