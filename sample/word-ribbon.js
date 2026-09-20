@@ -293,9 +293,6 @@ export function createDocumentRibbon({
             [
               gallery,
               t("DocumentStyles", "Manage styles", "brush"),
-              t("DocumentTheme", "Document theme", "paint"),
-              t("ThemeColor", "Theme color", "paint"),
-              t("ThemeFont", "Theme font", "brush"),
               t("CreateStyleFromSelection", "Style from selection", "brush"),
               t("ClearDirectFormatting", "Clear direct formatting", "brush"),
             ],
@@ -311,6 +308,18 @@ export function createDocumentRibbon({
           ]),
         ],
         "H",
+      ),
+      tab(
+        "design",
+        "Design",
+        [
+          group("document-theme", "Document formatting", [
+            t("DocumentTheme", "Document theme", "paint", large),
+            t("ThemeColor", "Theme color", "paint"),
+            t("ThemeFont", "Theme font", "brush"),
+          ]),
+        ],
+        "G",
       ),
       tab(
         "insert",

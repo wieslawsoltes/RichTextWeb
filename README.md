@@ -27,7 +27,7 @@ This does not implement every Word form feature or a security boundary: picture/
 
 ## Connected document themes — source, unreleased
 
-The engine now retains live twelve-color palettes, semantic color mappings, Latin heading/body font roles, and symbolic style/direct-format links. Theme edits are undoable; fixed literal formatting is preserved. Shared theme preview/customization, selection pickers and style-link controls are available in Home. Choose **Connected document themes** to change the report palette and heading font while keeping its direct violet brand color.
+The engine now retains live twelve-color palettes, semantic color mappings, Latin heading/body font roles, and symbolic style/direct-format links. Theme edits are undoable; fixed literal formatting is preserved. Shared theme preview/customization and selection pickers are available in the Design ribbon; named-style links remain in Home → Manage styles. Choose **Connected document themes** to change the report palette and heading font while keeping its direct violet brand color.
 
 Native DOCX retains supported theme parts, mappings, font/color/shading references and fallbacks. Theme/settings/relationship fingerprints reject stale private snapshots after relevant native-part edits. [Theme APIs and explicit limits](docs/DOCUMENT-THEMES.md) · [Complete feature audit](docs/WORD-FEATURE-AUDIT.md). This is text theming, not full Office script-font, drawing/effects, table-style or native visual equivalence. Version remains 0.5.0; no new package release is implied.
 

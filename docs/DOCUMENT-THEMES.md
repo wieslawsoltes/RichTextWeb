@@ -80,7 +80,7 @@ Header/footer, floating-content and rich content-control drafts share the theme 
 
 Editor controls expose `GetDocumentTheme`, read-only-guarded `SetDocumentTheme` and `DetachDocumentTheme`, plus generic engine commands through `Execute`. Read-only documents permit theme inspection. Modification dialogs validate input and reject changed document revisions, replaced editors/documents and newly read-only state before applying captured selections. The UI's light/dark chrome theme is separate from the document theme.
 
-Document Studio includes **Connected document themes** (`themes`) and Home ribbon theme commands. Choose Editorial to change the linked heading color/font, or Forest for another palette; its fixed violet brand text stays unchanged. The public-API sample factory is `sample/themes.js`. Existing outline, styles, form tools and automation remain available.
+Document Studio includes **Connected document themes** (`themes`) and Design ribbon theme commands. The separate Design tab avoids forcing the existing Home style manager into overflow. Choose Editorial to change the linked heading color/font, or Forest for another palette; its fixed violet brand text stays unchanged. The public-API sample factory is `sample/themes.js`. Existing outline, styles, form tools and automation remain available.
 
 ## Native DOCX
 
@@ -94,7 +94,7 @@ HTML/Markdown/XAML/PDF presentation conversions use resolved copies; canonical J
 
 ## Evidence and reproduction
 
-The continuation adds **47 Node regressions** to the 632-test baseline (**679 total**) and **seven integrated browser groups** (148 when the full suite passes). Tests cover live/model/selection behavior, style capture, schema/transform bounds, locks, undo, story conflicts, sequential collaboration, native DOCX with/without private snapshots, cross-part invalidation, fallbacks and the real sample. Browser tests exercise shared dialogs, mapped styles, read-only/stale validation, mobile geometry and the Home ribbon.
+The continuation adds **47 Node regressions** to the 632-test baseline (**679 total**) and **seven integrated browser groups** (148 when the full suite passes). Tests cover live/model/selection behavior, style capture, schema/transform bounds, locks, undo, story conflicts, sequential collaboration, native DOCX with/without private snapshots, cross-part invalidation, fallbacks and the real sample. Browser tests exercise shared dialogs, mapped styles, read-only/stale validation, mobile geometry and the Design ribbon.
 
 ```sh
 npm run typecheck
