@@ -1,0 +1,65 @@
+name: Document theme ribbon qualification
+on:
+  push:
+    branches: [work/document-theme-source]
+    paths: [.github/workflows/document-theme-ribbon.yml]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: mkdir -p qualification && npm ci 2>&1 | tee qualification/install.log
+      - name: Keep existing Home commands visible and add dedicated Design tools
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              assert s.count(old) == 1, (path, old, s.count(old))
+              p.write_text(s.replace(old, new))
+          replace('sample/word-ribbon.js', '              t("DocumentTheme", "Document theme", "paint"),\n              t("ThemeColor", "Theme color", "paint"),\n              t("ThemeFont", "Theme font", "brush"),\n', '')
+          replace('sample/word-ribbon.js', '      tab(\n        "insert",\n', '      tab(\n        "design",\n        "Design",\n        [\n          group("document-theme", "Document formatting", [\n            t("DocumentTheme", "Document theme", "paint", large),\n            t("ThemeColor", "Theme color", "paint"),\n            t("ThemeFont", "Theme font", "brush"),\n          ]),\n        ],\n        "G",\n      ),\n      tab(\n        "insert",\n')
+          replace('sample/themes.js', 'Open Home → Document theme.', 'Open Design → Document theme.')
+          replace('tests/document-theme.browser.mjs', '      richTextStudio.workspace.Ribbon.selectTab("home");\n', '      richTextStudio.workspace.Ribbon.selectTab("design");\n')
+          replace('tests/document-theme.browser.mjs', 'The connected-theme sample and Home ribbon', 'The connected-theme sample and Design ribbon')
+          replace('README.md', 'Shared theme preview/customization, selection pickers and style-link controls are available in Home.', 'Shared theme preview/customization and selection pickers are available in the Design ribbon; named-style links remain in Home → Manage styles.')
+          replace('docs/WORD-FEATURE-AUDIT.md', 'Home and the new `themes` sample use public APIs.', 'The Design ribbon and the new `themes` sample use public APIs, keeping existing Home style commands visible at desktop widths.')
+          replace('docs/DOCUMENT-THEMES.md', 'and Home ribbon theme commands.', 'and Design ribbon theme commands. The separate Design tab avoids forcing the existing Home style manager into overflow.')
+          replace('docs/DOCUMENT-THEMES.md', 'mobile geometry and the Home ribbon.', 'mobile geometry and the Design ribbon.')
+          PY
+          npx prettier --write sample/word-ribbon.js sample/themes.js tests/document-theme.browser.mjs README.md docs/WORD-FEATURE-AUDIT.md docs/DOCUMENT-THEMES.md
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/document-theme-ribbon.yml
+          git add sample/word-ribbon.js sample/themes.js tests/document-theme.browser.mjs README.md docs/WORD-FEATURE-AUDIT.md docs/DOCUMENT-THEMES.md
+          git commit -m 'fix: keep Home style tools visible with a dedicated Design theme tab'
+          git push origin HEAD:refs/heads/work/document-theme-source
+          git rev-parse HEAD > qualification/source-sha.txt
+          git rev-parse HEAD^{tree} > qualification/tree-sha.txt
+      - run: npm run typecheck 2>&1 | tee qualification/typecheck.log
+      - run: npm run check 2>&1 | tee qualification/check.log
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser 2>&1 | tee qualification/browser.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: document-theme-ribbon-qualification
+          path: |
+            test-results/
+            qualification/
+          retention-days: 7
+          if-no-files-found: warn
