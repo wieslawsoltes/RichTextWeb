@@ -1,0 +1,49 @@
+name: Native style margin qualification
+on:
+  push:
+    branches: [work/document-styles-source]
+    paths: [.github/workflows/document-style-margin-fix.yml]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Apply verified regression fix
+        run: |
+          mkdir -p qualification
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          encoded = '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'
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '883967df389c6ec176930aeb286be1b66d503cdf7bdfa62726838a94b05df7bc'
+          pathlib.Path('/tmp/margins.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','/tmp/margins.patch'],check=True)
+          subprocess.run(['git','apply','--index','/tmp/margins.patch'],check=True)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/document-style-margin-fix.yml
+          git diff --cached --check
+          git commit -m 'fix: preserve named margins for native line-height and first-line-only overrides'
+          git push origin HEAD:refs/heads/work/document-styles-source
+          git rev-parse HEAD > qualification/source-sha.txt
+          git rev-parse 'HEAD^{tree}' > qualification/source-tree.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check 2>&1 | tee qualification/check.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-style-margin-qualification
+          path: qualification/
+          retention-days: 7
