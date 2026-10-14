@@ -59,12 +59,33 @@ jobs:
           cd ..
           tar -I 'zstd -T0 -3' -cf toolchain.tar.zst dotnet packages dotnet-info.txt
           sha256sum toolchain.tar.zst > toolchain.sha256
+          split -b 384M -d toolchain.tar.zst toolchain.part-
+          sha256sum toolchain.part-* > parts.sha256
       - uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: native-avalonia-toolchain
+          name: native-avalonia-toolchain-00
           path: |
-            .toolchain/toolchain.tar.zst
+            .toolchain/toolchain.part-00
             .toolchain/toolchain.sha256
+            .toolchain/parts.sha256
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-avalonia-toolchain-01
+          path: .toolchain/toolchain.part-01
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-avalonia-toolchain-02
+          path: .toolchain/toolchain.part-02
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('.toolchain/toolchain.part-03') != '' }}
+        with:
+          name: native-avalonia-toolchain-03
+          path: .toolchain/toolchain.part-03
           compression-level: 0
           retention-days: 3
