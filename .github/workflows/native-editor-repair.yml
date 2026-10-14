@@ -1,0 +1,41 @@
+name: Native editor scoped source corrections
+on:
+  push:
+    branches: [feat/native-avalonia-wysiwyg]
+    paths: ['.github/workflows/native-editor-repair.yml']
+permissions:
+  contents: write
+jobs:
+  apply-reviewed-corrections:
+    if: github.ref == 'refs/heads/feat/native-avalonia-wysiwyg'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact, bounded source replacements
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('native/AvaloniaWysiwyg')
+          def replace(path, old, new, count=1):
+              p=root/path
+              text=p.read_text()
+              actual=text.count(old)
+              if actual!=count: raise SystemExit(f'{path}: expected {count} occurrences, got {actual}')
+              p.write_text(text.replace(old,new))
+          replace('src/Wysiwyg.Avalonia/DocumentSurface.cs','!IsAttachedToVisualTree','TopLevel.GetTopLevel(this) is null')
+          replace('src/Wysiwyg.Avalonia/DocumentSurface.Input.cs','StandardCursorType.SizeNorthwestSoutheast','StandardCursorType.BottomRightCorner',2)
+          replace('src/Wysiwyg.Avalonia/DocumentLayout.cs','lineHeight:size*p.Style.LineSpacing','lineHeight:Math.Max(size,p.Runs.Max(r=>r.Style.FontSize??size))*p.Style.LineSpacing')
+          replace('src/Wysiwyg.Core/DocumentValidation.cs','if (!valid) throw new DocumentValidationException("Image signature does not match its MIME type."); return bytes;','if (!valid) throw new DocumentValidationException("Image signature does not match its MIME type."); RasterImageInfo.Read(bytes); return bytes;')
+          replace('src/Wysiwyg.Core/RasterImageInfo.cs','width=checked((int)BinaryPrimitives.ReadUInt32BigEndian(data[16..]));height=checked((int)BinaryPrimitives.ReadUInt32BigEndian(data[20..]));','var w=BinaryPrimitives.ReadUInt32BigEndian(data[16..]);var h=BinaryPrimitives.ReadUInt32BigEndian(data[20..]);if(w>8192||h>8192)throw new DocumentValidationException("Image dimensions exceed the configured pixel limit.");width=(int)w;height=(int)h;')
+          replace('samples/Folio.Sample/MainView.axaml.cs','await using var stream=await file.OpenWriteAsync();var bytes=Encoding.UTF8.GetBytes(text);','await using var stream=await file.OpenWriteAsync();if(stream.CanSeek)stream.SetLength(0);var bytes=Encoding.UTF8.GetBytes(text);')
+          PY
+          git diff --check
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add native/AvaloniaWysiwyg/src native/AvaloniaWysiwyg/samples
+          git commit -m 'fix: align Avalonia pointer APIs and bound decoded image dimensions'
+          git push origin HEAD:refs/heads/feat/native-avalonia-wysiwyg
+          git rev-parse HEAD
