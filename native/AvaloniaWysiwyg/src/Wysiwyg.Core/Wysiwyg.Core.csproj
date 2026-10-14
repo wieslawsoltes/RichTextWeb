@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><Description>Immutable rich-document model, transactional editing, Unicode navigation, history and annotations.</Description></PropertyGroup></Project>

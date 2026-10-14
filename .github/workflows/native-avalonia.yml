@@ -11,81 +11,58 @@ concurrency:
   group: native-avalonia-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  bootstrap:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native/AvaloniaWysiwyg
+        shell: bash
     env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.toolchain/dotnet
-      NUGET_PACKAGES: ${{ github.workspace }}/.toolchain/packages
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.402
-      - name: Install browser toolchain
-        run: dotnet workload install wasm-tools
-      - name: Restore validation dependencies and publish browser bootstrap
-        shell: bash
+      - name: Core and interchange regression tests
         run: |
           set -euxo pipefail
-          mkdir -p .toolchain/bootstrap
-          cd .toolchain/bootstrap
-          cat > bootstrap.csproj <<'EOF'
-          <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
-            <PropertyGroup>
-              <TargetFramework>net10.0-browser</TargetFramework>
-              <OutputType>Exe</OutputType>
-              <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
-              <WasmMainJSPath>main.js</WasmMainJSPath>
-              <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-              <PublishTrimmed>false</PublishTrimmed>
-            </PropertyGroup>
-            <ItemGroup>
-              <PackageReference Include="Avalonia.Browser" Version="12.1.3" />
-              <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
-              <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
-              <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
-              <PackageReference Include="Avalonia.Headless" Version="12.1.3" />
-              <PackageReference Include="AngleSharp" Version="1.3.0" />
-              <PackageReference Include="Markdig" Version="0.41.3" />
-            </ItemGroup>
-          </Project>
-          EOF
-          printf 'System.Console.WriteLine("Native Avalonia toolchain ready");\n' > Program.cs
-          printf 'import { dotnet } from "./_framework/dotnet.js"; await dotnet.run();\n' > main.js
-          dotnet publish -c Release -o published
-          dotnet --info > ../dotnet-info.txt
-          cd ..
-          tar -I 'zstd -T0 -3' -cf toolchain.tar.zst dotnet packages dotnet-info.txt
-          sha256sum toolchain.tar.zst > toolchain.sha256
-          split -b 384M -d toolchain.tar.zst toolchain.part-
-          sha256sum toolchain.part-* > parts.sha256
-      - uses: actions/upload-artifact@v4
+          mkdir -p artifacts
+          dotnet run --project tests/Wysiwyg.Core.Tests -c Release 2>&1 | tee artifacts/core-tests.log
+      - name: Build desktop sample
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/samples/Folio.Desktop/Folio.Desktop.csproj') != '' }}
+        run: dotnet build samples/Folio.Desktop -c Release
+      - name: Install WebAssembly toolchain
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/samples/Folio.Browser/Folio.Browser.csproj') != '' }}
+        run: dotnet workload install wasm-tools
+      - name: Publish browser sample
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/samples/Folio.Browser/Folio.Browser.csproj') != '' }}
+        run: |
+          set -euxo pipefail
+          dotnet publish samples/Folio.Browser -c Release -o artifacts/browser 2>&1 | tee artifacts/browser-build.log
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/tests/browser/package.json') != '' }}
         with:
-          name: native-avalonia-toolchain-00
-          path: |
-            .toolchain/toolchain.part-00
-            .toolchain/toolchain.sha256
-            .toolchain/parts.sha256
-          compression-level: 0
-          retention-days: 3
+          node-version: 22
+      - name: Exercise real Avalonia browser application
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/tests/browser/package.json') != '' }}
+        run: |
+          set -euxo pipefail
+          cd tests/browser
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Package source
+        if: always()
+        run: |
+          git archive --format=zip --output=artifacts/AvaloniaWysiwyg-source.zip HEAD:native/AvaloniaWysiwyg
+          git rev-parse HEAD > artifacts/source-commit.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: native-avalonia-toolchain-01
-          path: .toolchain/toolchain.part-01
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-avalonia-toolchain-02
-          path: .toolchain/toolchain.part-02
-          compression-level: 0
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        if: ${{ hashFiles('.toolchain/toolchain.part-03') != '' }}
-        with:
-          name: native-avalonia-toolchain-03
-          path: .toolchain/toolchain.part-03
-          compression-level: 0
-          retention-days: 3
+          name: native-avalonia-validation
+          path: native/AvaloniaWysiwyg/artifacts/
+          retention-days: 14
+          if-no-files-found: error
