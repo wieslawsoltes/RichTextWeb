@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:editor="using:Wysiwyg.Controls" x:Class="Folio.Sample.MainView" Background="{DynamicResource FolioChromeBrush}">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.caption"><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{DynamicResource FolioMutedBrush}"/><Setter Property="Margin" Value="0,12,0,6"/></Style>
+    <Style Selector="Button.compact"><Setter Property="Padding" Value="10,6"/><Setter Property="FontSize" Value="12"/><Setter Property="CornerRadius" Value="5"/></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="5"/></Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="18,13" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+          <Border Background="#6366F1" CornerRadius="9" Width="35" Height="35"><TextBlock Text="f" FontSize="27" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+          <StackPanel><TextBlock Text="FOLIO STUDIO" FontSize="12" FontWeight="Bold"/><TextBlock Text="Native document workspace" FontSize="10" Foreground="{DynamicResource FolioMutedBrush}"/></StackPanel>
+        </StackPanel>
+        <TextBox Name="TitleBox" Grid.Column="1" Margin="28,0,20,0" MaxWidth="400" HorizontalAlignment="Left" MinWidth="180" BorderThickness="0" Background="Transparent" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" ToolTip.Tip="Document title; press Enter to rename"/>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Name="NewButton" Classes="compact" Content="New"/><Button Name="OpenButton" Classes="compact" Content="Open"/>
+          <Button Name="SaveButton" Classes="compact" Content="Save .folio" Background="#6366F1" Foreground="White"/>
+          <Button Name="ThemeButton" Classes="compact" Content="Dark"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="178,*,248" Name="WorkspaceGrid">
+      <Border Name="OutlinePane" Padding="16,13" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+          <TextBlock Text="DOCUMENT" Classes="caption"/><TextBlock Grid.Row="1" Text="Outline" FontSize="18" FontWeight="SemiBold" Margin="0,2,0,16"/>
+          <ScrollViewer Grid.Row="2"><StackPanel Name="OutlineItems" Spacing="4"/></ScrollViewer>
+          <StackPanel Grid.Row="3" Spacing="7" Margin="0,14,0,0">
+            <TextBlock Text="EXPORT" Classes="caption"/><Button Name="ExportHtmlButton" Classes="compact" Content="HTML document" HorizontalAlignment="Stretch"/>
+            <Button Name="ExportMarkdownButton" Classes="compact" Content="Markdown" HorizontalAlignment="Stretch"/>
+            <Button Name="ExportTextButton" Classes="compact" Content="Plain text" HorizontalAlignment="Stretch"/>
+            <TextBlock Text="Ctrl/Cmd+F to find&#10;Ctrl+Tab to leave the editor" FontSize="10" Foreground="{DynamicResource FolioMutedBrush}" Margin="0,12,0,0"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <editor:WysiwygEditor Name="DocumentEditor" Grid.Column="1"/>
+      <Border Name="InspectorPane" Grid.Column="2" Padding="16,13" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="1,0,0,0">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="5">
+            <TextBlock Text="PROPERTIES" Classes="caption"/><TextBlock Text="Make it yours" FontSize="18" FontWeight="SemiBold" Margin="0,2,0,10"/>
+            <CheckBox Name="ReadOnlyBox" Content="Read-only document"/>
+            <TextBlock Text="TYPOGRAPHY" Classes="caption"/>
+            <TextBox Name="FontFamilyBox" Text="Inter" Watermark="Font family"/>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,3,0,0"><NumericUpDown Name="FontSizeBox" Minimum="6" Maximum="144" Value="16" Increment="1" FormatString="0"/><Button Name="ApplyFontButton" Grid.Column="1" Content="Apply" Classes="compact" Margin="6,0,0,0"/></Grid>
+            <WrapPanel Name="ColorSwatches" Margin="0,6,0,0"/>
+            <Button Name="HighlightButton" Content="Highlight selection" Classes="compact" HorizontalAlignment="Stretch"/>
+            <TextBlock Text="PARAGRAPH" Classes="caption"/>
+            <WrapPanel>
+              <Button Name="AlignLeftButton" Classes="compact" Content="Left"/><Button Name="AlignCenterButton" Classes="compact" Content="Center" Margin="4,0"/><Button Name="AlignRightButton" Classes="compact" Content="Right"/>
+            </WrapPanel>
+            <WrapPanel Margin="0,4,0,0"><Button Name="OutdentButton" Classes="compact" Content="− Indent"/><Button Name="IndentButton" Classes="compact" Content="+ Indent" Margin="4,0,0,0"/></WrapPanel>
+            <CheckBox Name="RtlBox" Content="Right-to-left paragraph"/>
+            <TextBlock Text="LINK" Classes="caption"/><TextBox Name="LinkBox" Watermark="https://example.com"/>
+            <WrapPanel Margin="0,3,0,0"><Button Name="ApplyLinkButton" Classes="compact" Content="Apply link"/><Button Name="RemoveLinkButton" Classes="compact" Content="Remove" Margin="4,0,0,0"/></WrapPanel>
+            <TextBlock Text="INSERT" Classes="caption"/>
+            <WrapPanel><Button Name="InsertImageButton" Classes="compact" Content="Image…"/><Button Name="DemoImageButton" Classes="compact" Content="Demo image" Margin="4,0,0,0"/></WrapPanel>
+            <WrapPanel Margin="0,3,0,0"><Button Name="InsertRuleButton" Classes="compact" Content="Divider"/><Button Name="CodeButton" Classes="compact" Content="Code block" Margin="4,0,0,0"/></WrapPanel>
+            <Button Name="DeleteObjectButton" Classes="compact" Content="Delete selected object" HorizontalAlignment="Stretch"/>
+            <TextBlock Text="TABLE" Classes="caption"/>
+            <WrapPanel><Button Name="AddRowButton" Classes="compact" Content="+ Row"/><Button Name="DeleteRowButton" Classes="compact" Content="− Row" Margin="4,0,0,0"/></WrapPanel>
+            <WrapPanel Margin="0,3,0,0"><Button Name="AddColumnButton" Classes="compact" Content="+ Column"/><Button Name="DeleteColumnButton" Classes="compact" Content="− Column" Margin="4,0,0,0"/></WrapPanel>
+            <TextBlock Text="REVIEW" Classes="caption"/><TextBox Name="CommentBox" Watermark="Comment on the selection…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="120"/>
+            <Button Name="AddCommentButton" Classes="compact" Content="Add comment" HorizontalAlignment="Stretch"/>
+            <StackPanel Name="CommentItems" Spacing="7" Margin="0,8,0,20"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

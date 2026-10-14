@@ -1,0 +1,100 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Wysiwyg.Controls">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="FolioChromeBrush">#FFFFFF</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioWorkspaceBrush">#EDF1F7</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioBorderBrush">#E2E7EF</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioMutedBrush">#64748B</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioForegroundBrush">#243047</SolidColorBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="FolioChromeBrush">#202632</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioWorkspaceBrush">#161B25</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioBorderBrush">#343C4C</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioMutedBrush">#A6B0C3</SolidColorBrush>
+          <SolidColorBrush x:Key="FolioForegroundBrush">#E8EDF6</SolidColorBrush>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <ControlTheme x:Key="{x:Type local:WysiwygEditor}" TargetType="local:WysiwygEditor">
+        <Setter Property="Background" Value="{DynamicResource FolioWorkspaceBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource FolioForegroundBrush}"/>
+        <Setter Property="FontFamily" Value="Inter"/>
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Grid RowDefinitions="Auto,Auto,*,Auto" Background="{TemplateBinding Background}">
+              <Border Name="PART_Toolbar" Padding="10,7" Background="{DynamicResource FolioChromeBrush}" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="0,0,0,1" IsVisible="{TemplateBinding ShowToolbar}">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <Button Name="PART_Undo" Classes="tool" Content="↶" ToolTip.Tip="Undo (Ctrl/Cmd+Z)" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Undo"/>
+                    <Button Name="PART_Redo" Classes="tool" Content="↷" ToolTip.Tip="Redo (Ctrl/Cmd+Shift+Z)" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Redo"/>
+                    <Border Width="1" Margin="7,4" Background="{DynamicResource FolioBorderBrush}"/>
+                    <Button Name="PART_Body" Classes="tool wide" Content="Body" ToolTip.Tip="Normal paragraph" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Body"/>
+                    <Button Name="PART_H1" Classes="tool" Content="H1" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="H1"/>
+                    <Button Name="PART_H2" Classes="tool" Content="H2" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="H2"/>
+                    <Border Width="1" Margin="7,4" Background="{DynamicResource FolioBorderBrush}"/>
+                    <ToggleButton Name="PART_Bold" Classes="tool" Content="B" FontWeight="Bold" ToolTip.Tip="Bold (Ctrl/Cmd+B)" IsChecked="{Binding IsBold, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Bold"/>
+                    <ToggleButton Name="PART_Italic" Classes="tool" Content="I" FontStyle="Italic" ToolTip.Tip="Italic (Ctrl/Cmd+I)" IsChecked="{Binding IsItalic, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Italic"/>
+                    <ToggleButton Name="PART_Underline" Classes="tool" Content="U" ToolTip.Tip="Underline (Ctrl/Cmd+U)" IsChecked="{Binding IsUnderline, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Underline"/>
+                    <ToggleButton Name="PART_Strike" Classes="tool" Content="S̶" ToolTip.Tip="Strikethrough" IsChecked="{Binding IsStrike, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Strike"/>
+                    <Button Name="PART_Clear" Classes="tool" Content="Tx" ToolTip.Tip="Clear inline formatting" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Clear"/>
+                    <Border Width="1" Margin="7,4" Background="{DynamicResource FolioBorderBrush}"/>
+                    <Button Name="PART_Bullet" Classes="tool" Content="•≡" ToolTip.Tip="Bulleted list" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Bullet"/>
+                    <Button Name="PART_Numbered" Classes="tool" Content="1.≡" ToolTip.Tip="Numbered list" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Numbered"/>
+                    <Button Name="PART_Check" Classes="tool" Content="☐" ToolTip.Tip="Checklist" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Check"/>
+                    <Button Name="PART_Quote" Classes="tool" Content="❞" ToolTip.Tip="Block quote" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Quote"/>
+                    <Button Name="PART_Table" Classes="tool wide" Content="Table" ToolTip.Tip="Insert a 3 × 3 table" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Table"/>
+                    <Button Name="PART_Search" Classes="tool wide" Content="Find" ToolTip.Tip="Find and replace (Ctrl/Cmd+F)" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Search"/>
+                  </StackPanel>
+                </ScrollViewer>
+              </Border>
+              <Border Grid.Row="1" IsVisible="{TemplateBinding SearchVisible}" Background="{DynamicResource FolioChromeBrush}" Padding="12,8" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="0,0,0,1">
+                <StackPanel Spacing="7">
+                  <WrapPanel Orientation="Horizontal">
+                    <TextBox Name="PART_SearchBox" Width="180" Margin="0,0,6,0" Watermark="Find in document" Text="{Binding SearchText, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" AutomationProperties.Name="Find in document"/>
+                    <Button Name="PART_PreviousMatch" Content="Previous" Margin="0,0,4,0" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="PreviousMatch"/>
+                    <Button Name="PART_NextMatch" Content="Next" Margin="0,0,8,0" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="NextMatch"/>
+                    <CheckBox Content="Aa" Margin="0,0,8,0" IsChecked="{Binding MatchCase, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ToolTip.Tip="Match case"/>
+                    <CheckBox Content="Whole word" Margin="0,0,8,0" IsChecked="{Binding WholeWord, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"/>
+                    <TextBlock VerticalAlignment="Center" Text="{TemplateBinding SearchStatus}" Foreground="{DynamicResource FolioMutedBrush}"/>
+                    <Button Name="PART_CloseSearch" Content="×" Margin="8,0,0,0" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="CloseSearch"/>
+                  </WrapPanel>
+                  <WrapPanel Orientation="Horizontal">
+                    <TextBox Name="PART_ReplaceBox" Width="180" Margin="0,0,6,0" Watermark="Replace with" Text="{Binding ReplacementText, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" AutomationProperties.Name="Replace with"/>
+                    <Button Name="PART_Replace" Content="Replace" Margin="0,0,4,0" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Replace"/>
+                    <Button Name="PART_ReplaceAll" Content="Replace all" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="ReplaceAll"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+              <ScrollViewer Name="PART_ScrollViewer" Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="{TemplateBinding Background}" HorizontalContentAlignment="Center">
+                <local:DocumentSurface Name="PART_Surface" HorizontalAlignment="Center"/>
+              </ScrollViewer>
+              <Border Name="PART_StatusBar" Grid.Row="3" IsVisible="{TemplateBinding ShowStatusBar}" Background="{DynamicResource FolioChromeBrush}" BorderBrush="{DynamicResource FolioBorderBrush}" BorderThickness="0,1,0,0" Padding="14,6">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{TemplateBinding StatusText}" FontSize="11" Foreground="{DynamicResource FolioMutedBrush}"/>
+                    <TextBlock Text="{TemplateBinding Message}" FontSize="11" Foreground="{DynamicResource FolioMutedBrush}" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button Name="PART_ZoomOut" Classes="tool small" Content="−" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="ZoomOut"/>
+                    <Button Name="PART_Fit" Classes="tool wide small" Content="{TemplateBinding ZoomText}" ToolTip.Tip="Fit document width" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="Fit"/>
+                    <Button Name="PART_ZoomIn" Classes="tool small" Content="+" Command="{Binding Command, RelativeSource={RelativeSource TemplatedParent}}" CommandParameter="ZoomIn"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </Grid>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+    </ResourceDictionary>
+  </Styles.Resources>
+  <Style Selector="local|WysiwygEditor /template/ Button.tool">
+    <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="3"/><Setter Property="CornerRadius" Value="5"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="local|WysiwygEditor /template/ ToggleButton.tool">
+    <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="3"/><Setter Property="CornerRadius" Value="5"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="local|WysiwygEditor /template/ Button.wide"><Setter Property="Width" Value="52"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style Selector="local|WysiwygEditor /template/ Button.small"><Setter Property="Height" Value="25"/></Style>
+</Styles>

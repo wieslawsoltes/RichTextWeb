@@ -1,0 +1,3 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Folio.Sample.App" RequestedThemeVariant="Light">
+  <Application.Styles><FluentTheme/><StyleInclude Source="avares://Wysiwyg.Avalonia/Themes/Generic.axaml"/></Application.Styles>
+</Application>
