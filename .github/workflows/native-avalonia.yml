@@ -1,0 +1,131 @@
+name: Native Avalonia WYSIWYG
+on:
+  push:
+    branches: [feat/native-avalonia-wysiwyg]
+    paths: ['native/AvaloniaWysiwyg/**', '.github/workflows/native-avalonia.yml']
+  pull_request:
+    paths: ['native/AvaloniaWysiwyg/**', '.github/workflows/native-avalonia.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-avalonia-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native/AvaloniaWysiwyg
+        shell: bash
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+      SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.402
+      - name: Core regression tests
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts
+          dotnet run --project tests/Wysiwyg.Core.Tests -c Release 2>&1 | tee artifacts/core-tests.log
+      - name: Build desktop sample
+        run: |
+          set -euxo pipefail
+          dotnet build samples/Folio.Desktop -c Release 2>&1 | tee artifacts/desktop-build.log
+      - name: Pack reusable libraries
+        run: |
+          set -euxo pipefail
+          for project in Wysiwyg.Core Wysiwyg.Formats Wysiwyg.Avalonia; do
+            dotnet pack "src/$project" -c Release --no-build -o artifacts/packages
+          done
+      - name: Install WebAssembly toolchain
+        run: dotnet workload install wasm-tools
+      - name: Publish browser sample
+        run: |
+          set -euxo pipefail
+          dotnet publish samples/Folio.Browser -c Release -o artifacts/browser 2>&1 | tee artifacts/browser-build.log
+      - name: Inspect published browser file layout
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY' | tee artifacts/browser-files.txt
+          from pathlib import Path
+          root=Path('artifacts/browser')
+          files=sorted(p for p in root.rglob('*') if p.is_file())
+          print(f'Published files: {len(files)}; bytes: {sum(p.stat().st_size for p in files)}')
+          for name in ('index.html','main.js','dotnet.js'):
+              matches=[p for p in files if p.name==name]
+              if not matches: raise SystemExit(f'Missing browser asset: {name}')
+              for p in matches: print(p.relative_to(root),p.stat().st_size)
+          wasm=[p for p in files if p.suffix=='.wasm']
+          if not wasm: raise SystemExit('No WebAssembly modules found')
+          print(f'WebAssembly modules: {len(wasm)}')
+          print('This is build-output inspection only. Browser interaction tests have not run.')
+          PY
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/tests/browser/package.json') != '' }}
+        with:
+          node-version: 22
+      - name: Exercise real Avalonia browser application
+        if: ${{ hashFiles('native/AvaloniaWysiwyg/tests/browser/package.json') != '' }}
+        run: |
+          set -euxo pipefail
+          cd tests/browser
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Package and verify source
+        if: always()
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts
+          git -C ../.. archive --format=zip --output="$PWD/artifacts/AvaloniaWysiwyg-source.zip" HEAD:native/AvaloniaWysiwyg
+          printf '%s\n' "$SOURCE_REF" > artifacts/source-commit.txt
+          git rev-parse HEAD > artifacts/checkout-commit.txt
+          git rev-parse HEAD:native/AvaloniaWysiwyg > artifacts/source-tree.txt
+          python3 - <<'PY' | tee artifacts/source-archive-verification.txt
+          from pathlib import Path
+          import hashlib,zipfile
+          p=Path('artifacts/AvaloniaWysiwyg-source.zip')
+          with zipfile.ZipFile(p) as z:
+              names=z.namelist()
+              for required in ('README.md','global.json','src/Wysiwyg.Core/Document.cs','src/Wysiwyg.Avalonia/WysiwygEditor.cs','samples/Folio.Desktop/Program.cs','samples/Folio.Browser/Program.cs','tests/Wysiwyg.Core.Tests/Program.cs'):
+                  if required not in names: raise SystemExit(f'Source archive is missing {required}')
+              if z.testzip() is not None: raise SystemExit('Source ZIP integrity check failed')
+              print(f'PASS: {len(names)} source archive entries; all required projects present; ZIP integrity verified')
+          print('SHA256',hashlib.sha256(p.read_bytes()).hexdigest())
+          PY
+          (cd artifacts && sha256sum AvaloniaWysiwyg-source.zip > SHA256SUMS.txt)
+          if [[ -d artifacts/packages ]]; then (cd artifacts && sha256sum packages/*.nupkg >> SHA256SUMS.txt); fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-avalonia-source
+          path: |
+            native/AvaloniaWysiwyg/artifacts/AvaloniaWysiwyg-source.zip
+            native/AvaloniaWysiwyg/artifacts/source-commit.txt
+            native/AvaloniaWysiwyg/artifacts/source-tree.txt
+            native/AvaloniaWysiwyg/artifacts/source-archive-verification.txt
+            native/AvaloniaWysiwyg/artifacts/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-avalonia-validation
+          path: |
+            native/AvaloniaWysiwyg/artifacts/*.log
+            native/AvaloniaWysiwyg/artifacts/*.txt
+            native/AvaloniaWysiwyg/artifacts/packages/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: native-avalonia-browser
+          path: native/AvaloniaWysiwyg/artifacts/browser/
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: error

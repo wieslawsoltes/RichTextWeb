@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Wysiwyg.Avalonia/Wysiwyg.Avalonia.csproj"/><PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)"/><PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)"/></ItemGroup></Project>

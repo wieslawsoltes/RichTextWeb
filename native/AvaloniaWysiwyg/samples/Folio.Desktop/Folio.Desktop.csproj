@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType><IsPackable>false</IsPackable></PropertyGroup><ItemGroup><ProjectReference Include="../Folio.Sample/Folio.Sample.csproj"/><PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)"/></ItemGroup></Project>
