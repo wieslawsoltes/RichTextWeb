@@ -7,7 +7,7 @@ public readonly record struct RasterImageInfo(int Width,int Height)
     {
         int width=0,height=0;
         if(data.Length>=24 && data[..8].SequenceEqual(new byte[]{137,80,78,71,13,10,26,10}))
-        {width=checked((int)BinaryPrimitives.ReadUInt32BigEndian(data[16..]));height=checked((int)BinaryPrimitives.ReadUInt32BigEndian(data[20..]));}
+        {var w=BinaryPrimitives.ReadUInt32BigEndian(data[16..]);var h=BinaryPrimitives.ReadUInt32BigEndian(data[20..]);if(w>8192||h>8192)throw new DocumentValidationException("Image dimensions exceed the configured pixel limit.");width=(int)w;height=(int)h;}
         else if(data.Length>=10 && (data[..6].SequenceEqual("GIF87a"u8)||data[..6].SequenceEqual("GIF89a"u8)))
         {width=BinaryPrimitives.ReadUInt16LittleEndian(data[6..]);height=BinaryPrimitives.ReadUInt16LittleEndian(data[8..]);}
         else if(data.Length>=30 && data[..4].SequenceEqual("RIFF"u8) && data.Slice(8,4).SequenceEqual("WEBP"u8))

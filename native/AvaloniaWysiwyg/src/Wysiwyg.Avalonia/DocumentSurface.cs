@@ -123,7 +123,7 @@ public partial class DocumentSurface : Control
         }
         best??=_layout.Paragraphs[^1];var local=point-best.Bounds.Position;var hit=best.Layout.HitTestPoint(new Point(local.X,local.Y));return best.Leaf.Start+Math.Clamp(hit.TextPosition,0,best.Leaf.Paragraph.Length);
     }
-    public void EnsureCaretVisible(){if(_owner is null||!IsAttachedToVisualTree)return;var caret=GetCaretRectangle();this.BringIntoView(caret.Inflate(12));}
+    public void EnsureCaretVisible(){if(_owner is null||TopLevel.GetTopLevel(this) is null)return;var caret=GetCaretRectangle();this.BringIntoView(caret.Inflate(12));}
     private sealed class SurfaceInputMethod(DocumentSurface surface):TextInputMethodClient
     {
         public override Visual TextViewVisual=>surface;

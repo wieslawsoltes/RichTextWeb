@@ -127,7 +127,7 @@ public partial class MainView:UserControl
         else
         {
             var top=TopLevel.GetTopLevel(this);if(top is null)return;var file=await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions{Title="Save document",SuggestedFileName=name,DefaultExtension=format,ShowOverwritePrompt=true,FileTypeChoices=[new("Document"){Patterns=["*."+format]}]});
-            if(file is null)return;await using var stream=await file.OpenWriteAsync();var bytes=Encoding.UTF8.GetBytes(text);await stream.WriteAsync(bytes);await stream.FlushAsync();
+            if(file is null)return;await using var stream=await file.OpenWriteAsync();if(stream.CanSeek)stream.SetLength(0);var bytes=Encoding.UTF8.GetBytes(text);await stream.WriteAsync(bytes);await stream.FlushAsync();
         }
         if(format=="folio"&&ReferenceEquals(snapshot,Editor.Session.Document))Editor.Session.MarkSaved();Editor.Report("Exported "+name);
     }

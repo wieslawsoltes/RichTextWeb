@@ -94,12 +94,12 @@ public partial class DocumentSurface
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);if(_owner is not { } owner)return;
-        if(_resizingImage is not null){Cursor=new Cursor(StandardCursorType.SizeNorthwestSoutheast);return;}
+        if(_resizingImage is not null){Cursor=new Cursor(StandardCursorType.BottomRightCorner);return;}
         if(_dragging){owner.Session.SetSelection(_dragAnchor,PositionFromPoint(e.GetPosition(this)));EnsureCaretVisible();e.Handled=true;}
         else
         {
             var p=e.GetPosition(this);var logical=new Point(p.X/owner.Zoom,p.Y/owner.Zoom);var image=_layout.Objects.LastOrDefault(o=>o.Block is ImageBlock&&o.Bounds.Inflate(8).Contains(logical));
-            Cursor=new Cursor(image is null?StandardCursorType.Ibeam:new Rect(image.Bounds.BottomRight-new Vector(10,10),new Size(20,20)).Contains(logical)?StandardCursorType.SizeNorthwestSoutheast:StandardCursorType.Arrow);
+            Cursor=new Cursor(image is null?StandardCursorType.Ibeam:new Rect(image.Bounds.BottomRight-new Vector(10,10),new Size(20,20)).Contains(logical)?StandardCursorType.BottomRightCorner:StandardCursorType.Arrow);
         }
     }
     protected override void OnPointerReleased(PointerReleasedEventArgs e)

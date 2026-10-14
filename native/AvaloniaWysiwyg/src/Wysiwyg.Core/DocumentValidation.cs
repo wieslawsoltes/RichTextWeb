@@ -121,6 +121,6 @@ public static class EmbeddedImage
             "data:image/gif;base64" => bytes.AsSpan(0, 6).SequenceEqual("GIF87a"u8) || bytes.AsSpan(0, 6).SequenceEqual("GIF89a"u8),
             "data:image/webp;base64" => bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8), _ => false
         };
-        if (!valid) throw new DocumentValidationException("Image signature does not match its MIME type."); return bytes;
+        if (!valid) throw new DocumentValidationException("Image signature does not match its MIME type."); RasterImageInfo.Read(bytes); return bytes;
     }
 }

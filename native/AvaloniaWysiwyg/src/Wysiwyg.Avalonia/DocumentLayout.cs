@@ -86,7 +86,7 @@ internal sealed class DocumentLayout : IDisposable
             if(run.Text.Length>0)overrides.Add(new(offset,run.Text.Length,new GenericTextRunProperties(face,s.FontSize??size,decorations,fg,bg,script)));offset+=run.Text.Length;
         }
         var alignment=p.Style.Alignment switch{ParagraphAlignment.Center=>TextAlignment.Center,ParagraphAlignment.End=>TextAlignment.Right,ParagraphAlignment.Justify=>TextAlignment.Justify,_=>p.Style.RightToLeft?TextAlignment.Right:TextAlignment.Left};
-        return new TextLayout(p.Text,baseFace,size,foreground,textAlignment:alignment,textWrapping:TextWrapping.Wrap,flowDirection:p.Style.RightToLeft?FlowDirection.RightToLeft:FlowDirection.LeftToRight,maxWidth:width,lineHeight:size*p.Style.LineSpacing,textStyleOverrides:overrides);
+        return new TextLayout(p.Text,baseFace,size,foreground,textAlignment:alignment,textWrapping:TextWrapping.Wrap,flowDirection:p.Style.RightToLeft?FlowDirection.RightToLeft:FlowDirection.LeftToRight,maxWidth:width,lineHeight:Math.Max(size,p.Runs.Max(r=>r.Style.FontSize??size))*p.Style.LineSpacing,textStyleOverrides:overrides);
     }
     public Bitmap? GetImage(ImageBlock image)
     {
