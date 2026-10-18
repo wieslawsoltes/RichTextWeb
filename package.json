@@ -141,9 +141,9 @@
     }
   },
   "devDependencies": {
-    "@types/node": "26.5.1",
+    "@types/node": "26.6.5",
     "@types/react": "19.3.0",
-    "@wieslawsoltes/dockyard": "0.1.0",
+    "@wieslawsoltes/dockyard": "0.2.0",
     "@wieslawsoltes/dynamicdataweb": "0.1.1",
     "@wieslawsoltes/quikgraphweb": "0.2.0",
     "@wieslawsoltes/rbushweb": "0.1.1",
@@ -151,10 +151,10 @@
     "@wieslawsoltes/ribbon-web": "0.1.1",
     "@wieslawsoltes/treedatagridweb": "0.1.0",
     "esbuild": "0.28.2",
-    "playwright": "1.63.0",
-    "prettier": "3.9.6",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "playwright": "1.64.1",
+    "prettier": "3.9.10",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "rxjs": "7.8.2",
     "typescript": "7.0.2",
     "mathjax-full": "3.2.2"
